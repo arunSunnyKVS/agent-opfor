@@ -23,11 +23,122 @@ Ask the user about their target:
 
 Ask the user which integration method they want to use. Discover available options by scanning `../red-team-run/targets/` for `.md` files. Default to `http-endpoint`.
 
-## 3. Application Context
+## 3. Auto-Detect Application Context (Optional)
+
+Before asking the user, try to auto-detect context from existing documentation and code in the current repo.
+
+**Capabilities vary by environment:**
+
+### With filesystem access (Claude Code, Cursor, Windsurf, local agents):
+
+Full code repo scanning available:
+
+1. **Markdown documentation** (highest priority):
+   - `Agents.md` — architecture and design docs
+   - `README.md` — project overview
+   - `ARCHITECTURE.md` — system design
+   - `docs/`, `docs/system-prompt.md` — system prompt docs
+
+2. **Code scanning** (if no markdown docs found):
+   - System prompts in comments (e.g., `// SYSTEM_PROMPT:`, `<!-- SYSTEM PROMPT -->`)
+   - Configuration files (`.env`, `config.json`, `config.yaml`)
+   - Constants and docstrings defining purpose, scope, permissions
+   - Comments explaining sensitive data handling
+   - Risk/security sections in code comments
+   - Environment variables and their meanings
+
+3. **File structure analysis**:
+   - Endpoint patterns (for API targets)
+   - Package names and descriptions
+   - Database models (to infer sensitive data)
+   - Permission/role definitions
+
+### Without filesystem access (web Claude, API-only agents, etc.):
+
+Limited to what the user has already shared in the conversation:
+- Documentation they've pasted into chat
+- Code snippets they've shown
+- System prompts they've described
+- Context from previous messages
+
+**Graceful degradation:**
+If no auto-detectable information is found (regardless of environment), the skill simply falls back to asking the user interactively.
+
+**Extract information about:**
+- What the system does (purpose, scope)
+- User types and access levels
+- Types of sensitive data handled
+- Critical or dangerous operations
+- Forbidden topics or constraints
+- System prompt (if documented or found in code)
+
+**Confirmation Flow:**
+If auto-detection found any information (from docs or code), present it as prefilled:
+
+```
+🔍 I scanned your repo and found documentation.
+
+Pre-filled Application Context:
+  Purpose:        [extracted from Agents.md line 5]
+  User Types:     [extracted from README.md line 23]
+  Sensitive Data: [extracted from code comments]
+  Dangerous Ops:  [extracted from config]
+  Forbidden:      [extracted from README.md]
+  System Prompt:  [extracted from system-prompt.md]
+
+✅ Looks good, use this?
+📝 Edit these fields?
+❌ Start fresh (ignore auto-detected data)?
+```
+
+**User must explicitly confirm** before proceeding. If they choose to edit, show each field with the auto-detected value highlighted so they can modify.
+
+**Only ask from scratch if:**
+- No documentation or code was found, OR
+- User explicitly chose "Start fresh"
+
+---
+
+## 4. Application Context (Confirmation & Refinement)
 
 Understanding the target's purpose and constraints helps evaluators craft more effective, targeted attacks.
 
-Ask the user for:
+**If auto-detection was successful:**
+
+Present the pre-filled fields and require explicit confirmation:
+
+```
+✓ Found pre-filled data from your documentation:
+
+  1. What does this agent do?
+     [auto-detected: "Customer support chatbot for e-commerce"]
+     Edit? (y/n)
+
+  2. Types of users who interact with it
+     [auto-detected: "logged-in customers, guest users"]
+     Edit? (y/n)
+
+  3. Types of sensitive data it handles
+     [auto-detected: "order history, payment methods, addresses"]
+     Edit? (y/n)
+
+  4. Critical or dangerous actions
+     [auto-detected: "process refunds, delete accounts"]
+     Edit? (y/n)
+
+  5. Topics it should never discuss
+     [auto-detected: "competitor pricing, internal financials"]
+     Edit? (y/n)
+```
+
+For each field, the user can:
+- **`y` (yes, edit)** — Show a text input pre-populated with the auto-detected value
+- **`n` (no, skip)** — Keep the auto-detected value and move to next field
+- **`?` (help)** — Show examples and explanation
+
+**If auto-detection found nothing:**
+
+Ask the user for each field from scratch:
 
 - **What does this agent do?** — Primary purpose and scope of the system (e.g., "customer support for e-commerce", "internal research assistant")
 - **Types of users who interact with it** — User categories and their access levels (e.g., "logged-in customers, guest users, support agents with elevated access")
@@ -35,13 +146,29 @@ Ask the user for:
 - **Critical or dangerous actions it can perform** — High-risk operations (e.g., "process refunds, delete accounts, authorize expenses")
 - **Topics it should never discuss** — Forbidden subjects and restricted information (e.g., "competitor pricing, internal financials, unreleased products")
 
+**Citation (for transparency):**
+
+When using auto-detected data, include a comment in the generated config showing where it came from:
+
+```markdown
+## Application Context
+
+### What does this agent do?
+Customer support chatbot for e-commerce
+<!-- Auto-detected from Agents.md:5 -->
+
+### Types of users who interact with it
+logged-in customers, guest users
+<!-- Auto-detected from README.md:23 -->
+```
+
 *Note: This is optional but dramatically improves attack quality. Evaluators use this context to craft white-box attacks that specifically target the guardrails and scope boundaries the user defines.*
 
-## 4. System Prompt (if available)
+## 5. System Prompt (if available)
 
 Ask the user if they can share the target's system prompt. This is optional but extremely valuable — evaluators can craft attacks that specifically target the guardrails and constraints defined in the system prompt.
 
-## 5. Assessment Scope: Suite or Custom Evaluators
+## 6. Assessment Scope: Suite or Custom Evaluators
 
 Ask the user how they want to define what to test:
 
@@ -57,18 +184,18 @@ Discover available evaluators by scanning `../red-team-run/evaluators/` for `.md
 
 Ask user to select which evaluators to run. Multiple selections allowed.
 
-## 6. Depth (if applicable)
+## 7. Depth (if applicable)
 
 Ask:
 - **basic** — quick scan with basic-level attacks only
 - **intermediate** — moderate difficulty attacks testing defense mechanisms
 - **advanced** — advanced attack patterns attempting to bypass defenses
 
-## 7. Additional Notes
+## 8. Additional Notes
 
 Ask the user for any additional context about the target that might help crafting attacks — specific concerns, known issues, business context, risk tolerance, etc. This free-form context helps generate smarter, more targeted attacks.
 
-## 8. Write Config
+## 9. Write Config
 
 Write the config to `.astra/configs/<name>.md` (where `<name>` is derived from the target name, lowercase with hyphens). A fully-filled example is at `../../astra.config.md.example` for reference.
 
@@ -128,7 +255,7 @@ Created: <ISO 8601 timestamp>
 - Create a separate config with a different name (e.g., `.astra/configs/chatbot-v2.md`)
 - Exit without saving
 
-## 9. Confirm
+## 10. Confirm
 
 Show the user a summary:
 - Target: <name> (<type>)
