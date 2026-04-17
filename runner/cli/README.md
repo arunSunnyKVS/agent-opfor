@@ -18,7 +18,7 @@ npx astra run --help
 npx astra run --config astra.config.md
 ```
 
-This reads `astra.config.md`, invokes the red team agent with the `red-team-run` skill, and streams results to the terminal. The provider defaults to `claude` (Claude Code).
+This reads `astra.config.md`, invokes the red team agent with the `redteam-run` skill, and streams results to the terminal. The provider defaults to `claude` (Claude Code).
 
 ### Choose a Provider
 
@@ -99,7 +99,7 @@ npx astra run --config astra.config.md
 The CLI is a thin wrapper:
 
 1. Parses CLI arguments (config, suite, evaluators, output path, provider, failure criteria)
-2. Constructs a prompt that loads the `red-team-run` skill from the skills directory
+2. Constructs a prompt that loads the `redteam-run` skill from the skills directory
 3. Spawns the specified agent (currently Claude Code) with the prompt
 4. Streams the agent's output to your terminal
 5. Exits with code 0 (success) or 1 (failure found if `--fail-on` was set)
@@ -118,7 +118,7 @@ The CLI is a thin wrapper:
 
 ### General
 - **Node.js**: v12 or later
-- **Config file**: A `astra.config.md` created by running `red-team-config` skill
+- **Config file**: A `astra.config.md` created by running `redteam-setup` skill
 
 ## CI/CD Integration
 

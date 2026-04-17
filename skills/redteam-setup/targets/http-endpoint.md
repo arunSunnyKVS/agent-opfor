@@ -117,7 +117,7 @@ Capture stdout as the response. If curl fails (exit code != 0), fall back to Opt
 
 ## Integration Example
 
-When `red-team-run` invokes an attack:
+When `redteam-run` invokes an attack:
 
 ```
 1. Read attack pattern from attacks/jailbreaking/role-play.md

@@ -97,7 +97,7 @@ Capture stdout as the response. Check exit code for errors.
 
 ## Integration Example
 
-When `red-team-run` invokes an attack against a custom function:
+When `redteam-run` invokes an attack against a custom function:
 
 ```
 1. Read attack pattern from attacks/jailbreaking/role-play.md

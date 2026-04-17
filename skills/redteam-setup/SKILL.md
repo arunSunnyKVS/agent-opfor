@@ -1,5 +1,5 @@
 ---
-name: red-team-config
+name: redteam-setup
 description: >
   Configure a target for AI red team assessment. Use when the user wants to
   set up a new target, configure what to test, or create a astra.config.md.
@@ -21,7 +21,7 @@ Ask the user about their target:
 
 ## 2. Target Type
 
-Ask the user which integration method they want to use. Discover available options by scanning `../red-team-run/targets/` for `.md` files. Default to `http-endpoint`.
+Ask the user which integration method they want to use. Discover available options by scanning `./targets/` for `.md` files. Default to `http-endpoint`.
 
 ## 3. Auto-Detect Application Context (Optional)
 
@@ -172,7 +172,7 @@ Ask the user if they can share the target's system prompt. This is optional but 
 
 ### Step 1: Discover Available Suites
 
-**Before asking the user anything**, scan `../red-team-run/suites/` for all `.md` files:
+**Before asking the user anything**, scan `./suites/` for all `.md` files:
 
 For each file, read the frontmatter to extract:
 - `name` — the suite name (e.g., "owasp-llm-top10")
@@ -191,7 +191,7 @@ Example suites found:
 
 ### Step 2: Discover Available Evaluators
 
-**Also scan** `../red-team-run/evaluators/` for all `.md` files:
+**Also scan** `./evaluators/` for all `.md` files:
 
 For each file, read the frontmatter to extract:
 - `id` — evaluator ID (e.g., "prompt-injection")
@@ -216,7 +216,7 @@ B) Custom selection (pick specific evaluators)
 ```
 
 **IMPORTANT:** 
-- Only present suites that actually exist in `../red-team-run/suites/`
+- Only present suites that actually exist in `./suites/`
 - Do NOT allow free-form suite names
 - If user chooses A, ask them to select from the discovered suites
 - If user chooses B, present discovered evaluators grouped by severity
@@ -243,7 +243,7 @@ This will run these 10 evaluators:
 
 ### If User Chooses Option B: Custom Evaluators
 
-Present evaluators grouped by severity (discovered from `../red-team-run/evaluators/`):
+Present evaluators grouped by severity (discovered from `./evaluators/`):
 
 ```
 CRITICAL (5 found):
@@ -297,7 +297,7 @@ After collecting test configuration, generate pre-attack input files automatical
 
 **For each selected evaluator:**
 
-1. Read the evaluator skill file from `../red-team-run/evaluators/<evaluator-id>.md`
+1. Read the evaluator skill file from `./evaluators/<evaluator-id>.md`
 2. Read the `## Attack Patterns` section
 3. Generate `<test_cases>` attack prompts:
    - Use patterns as templates
@@ -468,6 +468,6 @@ Next Step:             npx astra run --config .astra/configs/<uuid>/
 You can:
   • Review/edit attack inputs at .astra/configs/<uuid>/inputs/
   • Run the assessment: npx astra run --config .astra/configs/<uuid>/
-  • Create more configs: run /red-team-config again
+  • Create more configs: run /redteam-setup again
   • View examples: .astra/configs/README.md
 ```

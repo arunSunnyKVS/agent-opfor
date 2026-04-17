@@ -46,7 +46,7 @@ cd astra
 Two slash commands are now available in your agent:
 
 ```
-/red-team-config
+/redteam-setup
 ```
 
 The agent will guide you through:
@@ -72,7 +72,7 @@ See [astra.config.md.example](astra.config.md.example) for the full template.
 **3. Run the assessment**
 
 ```
-/red-team-run
+/redteam-run
 ```
 
 Or use the CLI:
@@ -223,14 +223,14 @@ astra/
 │   └── README.md                      ← How to create and manage configs
 │
 ├── skills/
-│   ├── red-team-config/               ← /red-team-config slash command
+│   ├── redteam-setup/               ← /redteam-setup slash command
 │   │   └── SKILL.md                   ← Interactive config wizard
 │   │
-│   └── red-team-run/                  ← /red-team-run slash command
+│   └── redteam-run/                  ← /redteam-run slash command
 │       ├── SKILL.md                   ← Assessment orchestrator + executor
 │       ├── evaluators/                ← 20 evaluators (OWASP LLM + Agentic AI)
-│       ├── suites/                    ← Suite definitions (referenced by red-team-config via ../)
-│       └── targets/                   ← Target adapters (referenced by red-team-config via ../)
+│       ├── suites/                    ← Suite definitions (referenced by redteam-setup via ../)
+│       └── targets/                   ← Target adapters (referenced by redteam-setup via ../)
 │
 ├── runner/                            ← CLI + extension runners
 │   ├── cli/
@@ -276,7 +276,7 @@ git clone https://github.com/yourusername/astra.git
 cd astra
 
 # Option 1: Use skills directly from repo
-npx claude -p "Read the skill at ./skills/red-team-config.md"
+npx claude -p "Read the skill at ./skills/redteam-setup.md"
 
 # Option 2: Symlink skills to Claude Code
 mkdir -p ~/.claude/skills
