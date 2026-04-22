@@ -1,310 +1,360 @@
 # astra
 
-Red team AI systems using your coding agent. No SDK. No code. Just skills.
+Red team AI systems — using your coding agent or a standalone CLI.
 
-`astra` is an open-source skill package that teaches your AI coding agent how to security test LLMs, chatbots, RAG pipelines, and AI agents. Install the skills, describe your target, and let the agent handle the rest.
+`astra` is an open-source toolkit for adversarial security testing of LLMs, chatbots, RAG pipelines, and AI agents. It covers the OWASP LLM Top 10 and OWASP Agentic AI Top 10.
 
-```
+You can use it in two ways:
+
+| | Skills (agent-based) | CLI (standalone) |
+|---|---|---|
+| **How** | Agent reads skill files and executes the test | `astra init / setup / run` commands |
+| **Requires** | Claude Code, Cursor, Windsurf, or any agent with skills support | Node.js 18+, any LLM API key |
+| **Best for** | Interactive setup, white-box attacks, conversational workflow | CI/CD pipelines, automated scans, scripted workflows |
+| **Output** | Markdown report in chat | HTML + JSON report on disk |
+
+---
+
+## Option 1 — Skills (agent-based)
+
+The skills approach encodes red teaming **knowledge** as structured markdown files that any AI coding agent can read and execute. No code, no config — just describe your target.
+
+### Install the skills
+
+```bash
+# From npm
 npx skills add astra
-```
 
-## How it works
-
-Traditional red teaming tools make you write Python scripts, configure YAML/JSON files, and learn a framework. `astra` takes a different approach — it encodes red teaming **knowledge** as structured markdown skill files that any AI coding agent can read and execute.
-
-```
-You:    "Red team my customer support chatbot at api.example.com/chat"
-Agent:  reads skills → asks clarifying questions → selects framework
-        → generates attacks → tests your system → reports vulnerabilities
-```
-
-Works with Claude Code, Cursor, Windsurf, and any agent that supports skills.
-
-## Quick start
-
-**1. Install the skills**
-
-### From GitHub (works now, no npm required)
-```bash
-npx skills add https://github.com/yourusername/astra
-```
-
-### From npm (stable releases, when published)
-```bash
-npx skills add astra
-```
-
-### Manual (clone and use locally)
-```bash
+# Or clone directly
 git clone https://github.com/yourusername/astra.git
-cd astra
-# Then tell your agent: "Configure a red team target"
 ```
 
-**2. Configure a target**
+### Step 1 — Configure a target
 
-Two slash commands are now available in your agent:
+Run the setup skill in your agent:
 
 ```
-/redteam-setup
+/astra-setup
 ```
 
 The agent will guide you through:
 - **Target Information** — name, type, endpoint, model
 - **Application Context** — what it does, user types, sensitive data, dangerous actions, forbidden topics
-- **System Prompt** — the actual instructions the agent runs under (if available)
-- **Test Configuration** — which evaluators/suites to run and depth level
-- **Notes** — additional context and concerns
+- **System Prompt** — the actual instructions the target runs under (optional but improves attack quality)
+- **Test Configuration** — which evaluators or suite to run, number of test cases, single or multi-turn
 
-Result: `.astra/configs/my-target.md` (auto-created with all your answers)
+Result: a config folder is created at `.astra/configs/<uuid>/` with the config and pre-generated attack inputs.
 
-### Manual Setup (Advanced)
+### Step 2 — Run the assessment
 
-Alternatively, copy the template and edit manually:
+```
+/astra-run
+```
+
+The agent will:
+1. Load your configuration and pre-generated attack inputs
+2. Fire each attack at your target
+3. Judge every response (PASS/FAIL) with evidence
+4. Generate an HTML + JSON report in `.astra/reports/`
+
+### Manual setup (skip the wizard)
+
+Copy the example config and edit it directly:
 
 ```bash
 cp astra.config.md.example .astra/configs/my-target.md
-# Edit with your text editor
 ```
 
 See [astra.config.md.example](astra.config.md.example) for the full template.
 
-**3. Run the assessment**
+---
 
-```
-/redteam-run
-```
+## Option 2 — CLI (standalone)
 
-Or use the CLI:
+The CLI is a self-contained TypeScript tool that handles everything: interactive setup, attack prompt generation, firing attacks, judging responses, and producing reports — all without an agent.
+
+### Requirements
+
+- Node.js 18+
+- API key for any supported LLM provider (OpenAI, Anthropic, Groq, Google, or any OpenAI-compatible endpoint)
+
+### Install
 
 ```bash
-npx astra run --config .astra/configs/my-target.md
+# Global install
+npm install -g astra
+
+# Or use without installing
+npx astra --help
 ```
 
-The agent will:
-1. Load your configuration
-2. Select evaluators (from suite or custom list)
-3. Generate targeted attacks using Application Context
-4. Test your system and capture responses
-5. Evaluate each test (PASS/FAIL) with evidence
-6. Generate a report with findings and recommendations
+### Step 1 — Create a config file
+
+```bash
+astra init
+```
+
+This writes `astra.config.json` in the current directory. Edit it with your target details.
+
+**Config file format:**
+
+```json
+{
+  "llm": {
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile"
+  },
+  "target": {
+    "name": "My Support Bot",
+    "description": "A customer support chatbot with access to user booking data and PII. It can issue partial refunds and look up bookings by name.",
+    "type": "http-endpoint",
+    "endpoint": "http://localhost:4000/chat",
+    "requestFormat": "openai",
+    "targetModel": "gpt-4o-mini"
+  },
+  "selection": {
+    "mode": "suite",
+    "suite": "owasp-llm-top10"
+  }
+}
+```
+
+Or use YAML (`astra.config.yml`):
+
+```yaml
+llm:
+  provider: groq
+  model: llama-3.3-70b-versatile
+
+target:
+  name: My Support Bot
+  description: >
+    A customer support chatbot with access to user booking data and PII.
+    It can issue partial refunds and look up bookings by name.
+  type: http-endpoint
+  endpoint: http://localhost:4000/chat
+  requestFormat: openai
+
+selection:
+  mode: evaluators
+  evaluators:
+    - prompt-injection
+    - sensitive-disclosure
+    - system-prompt-leakage
+    - jailbreaking
+```
+
+### Step 2 — Set your LLM API key
+
+The LLM is used to generate attack prompts and judge responses. You have three ways to supply the key, in priority order:
+
+**Option A — CLI flag (highest priority):**
+```bash
+astra setup --config astra.config.json --api-key gsk_your-key-here
+```
+
+**Option B — Environment variable:**
+```bash
+export GROQ_API_KEY=your-key-here       # Groq (free tier available)
+export OPENAI_API_KEY=your-key-here     # OpenAI
+export ANTHROPIC_API_KEY=your-key-here  # Anthropic
+export GOOGLE_GENERATIVE_AI_API_KEY=... # Google
+```
+
+**Option C — Config file field:**
+```json
+{ "llm": { "provider": "groq", "apiKey": "gsk_your-key-here" } }
+```
+> **Note:** Avoid committing the config file if it contains an API key. Add `astra.config.json` and `astra-prompts-*.json` to `.gitignore`.
+
+### Step 3 — Generate attack prompts
+
+```bash
+# From config file (non-interactive)
+astra setup --config astra.config.json
+
+# With API key passed directly on the command line
+astra setup --config astra.config.json --api-key gsk_your-key-here
+
+# Or run interactively (no config needed)
+astra setup
+```
+
+This writes `astra-prompts-<timestamp>.json` containing all generated attack prompts.
+
+### Step 4 — Run the scan
+
+```bash
+astra run --input astra-prompts-<timestamp>.json
+
+# Override the API key at run time (e.g. use a different key for judging)
+astra run --input astra-prompts-<timestamp>.json --api-key gsk_your-key-here
+
+# Write reports to a custom directory
+astra run --input astra-prompts-<timestamp>.json --output-dir ./reports
+```
+
+### CLI commands reference
+
+| Command | Description |
+|---|---|
+| `astra init` | Generate a sample `astra.config.json` |
+| `astra setup` | Interactive wizard to collect config and generate attack prompts |
+| `astra setup --config <file>` | Non-interactive setup from a JSON or YAML config file |
+| `astra setup --config <file> --api-key <key>` | Setup with API key passed directly |
+| `astra run --input <file>` | Fire attacks and generate HTML + JSON report |
+| `astra run --input <file> --api-key <key>` | Run with API key override |
+
+### Config fields reference
+
+| Field | Required | Description |
+|---|---|---|
+| `llm.provider` | No | `groq`, `openai`, `anthropic`, `google`, or `other`. Defaults to `groq`. |
+| `llm.model` | No | Model name. Defaults to provider's recommended model. |
+| `llm.apiKey` | No | API key. If omitted, read from the corresponding env var. |
+| `llm.baseURL` | Only for `other` | Base URL for custom OpenAI-compatible endpoints. |
+| `target.name` | Yes | Human-readable name for the target. |
+| `target.description` | Yes | What the target does, what data it has access to, restrictions. More detail = better attacks. |
+| `target.type` | Yes | `http-endpoint` or `python-function`. |
+| `target.endpoint` | For HTTP | Full URL to POST attacks to. |
+| `target.requestFormat` | For HTTP | `openai` (messages array) or `json` (`{prompt: "..."}` body). |
+| `target.targetModel` | For HTTP | Model name to send in the request body. |
+| `target.targetApiKey` | For HTTP | Bearer token for the target endpoint, if needed. |
+| `selection.mode` | Yes | `suite` or `evaluators`. |
+| `selection.suite` | For suite | `owasp-llm-top10` or `owasp-agentic-ai`. |
+| `selection.evaluators` | For evaluators | Array of evaluator IDs (see list below). |
+
+### Supported LLM providers
+
+| Provider | Env var | Default model |
+|---|---|---|
+| `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
+| `openai` | `OPENAI_API_KEY` | `gpt-4o-mini` |
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-3-5-haiku-20241022` |
+| `google` | `GOOGLE_GENERATIVE_AI_API_KEY` | `gemini-2.0-flash` |
+| `other` | `ASTRA_API_KEY` | (requires `llm.baseURL`) |
+
+### Target endpoint formats
+
+**`openai`** — OpenAI messages format:
+```json
+POST /chat
+{ "model": "...", "messages": [{ "role": "user", "content": "attack prompt" }] }
+```
+Response parsed from `choices[0].message.content`.
+
+**`json`** — Generic JSON format:
+```json
+POST /chat
+{ "prompt": "attack prompt" }
+```
+Response parsed from `.response` field.
+
+### CI/CD integration
+
+```yaml
+# .github/workflows/astra.yml
+- name: Generate attack prompts
+  run: astra setup --config astra.config.json
+
+- name: Run Astra scan
+  run: astra run --input astra-prompts-*.json
+```
+
+---
 
 ## What it tests
 
-The skill includes **evaluators** for major AI/LLM vulnerability categories and agentic AI systems. Each evaluator is a standalone skill with built-in attack patterns.
-
 ### LLM Vulnerabilities (OWASP LLM Top 10)
 
-| Evaluator | Severity | OWASP | Status |
-| --- | --- | --- | --- |
-| Prompt Injection | Critical | LLM01 | ✅ Available |
-| Sensitive Information Disclosure | Critical | LLM02 | ✅ Available |
-| Supply Chain Vulnerabilities | High | LLM03 | ✅ Available |
-| Data and Model Poisoning | High | LLM04 | ✅ Available |
-| Improper Output Handling | High | LLM05 | ✅ Available |
-| Excessive Agency | High | LLM06 | ✅ Available |
-| System Prompt Leakage | Critical | LLM07 | ✅ Available |
-| Vector and Embedding Weaknesses | High | LLM08 | ✅ Available |
-| Misinformation | High | LLM09 | ✅ Available |
-| Unbounded Consumption | High | LLM10 | ✅ Available |
+| Evaluator | Severity | OWASP |
+|---|---|---|
+| Prompt Injection | Critical | LLM01 |
+| Sensitive Information Disclosure | Critical | LLM02 |
+| Supply Chain Vulnerabilities | High | LLM03 |
+| Data and Model Poisoning | High | LLM04 |
+| Improper Output Handling | High | LLM05 |
+| Excessive Agency | High | LLM06 |
+| System Prompt Leakage | Critical | LLM07 |
+| Vector and Embedding Weaknesses | High | LLM08 |
+| Misinformation | High | LLM09 |
+| Unbounded Consumption | High | LLM10 |
+| Jailbreaking | High | LLM10 |
 
-### Agentic AI Vulnerabilities (OWASP Agentic AI)
+### Agentic AI Vulnerabilities (OWASP Agentic AI Top 10)
 
-| Evaluator | Severity | OWASP | Status |
-| --- | --- | --- | --- |
-| Agent Goal Hijacking | Critical | ASI01 | ✅ Available |
-| Tool Misuse and Exploitation | Critical | ASI02 | ✅ Available |
-| Identity and Privilege Abuse | Critical | ASI03 | ✅ Available |
-| Agentic Supply Chain Vulnerabilities | High | ASI04 | ✅ Available |
-| Unexpected Code Execution | Critical | ASI05 | ✅ Available |
-| Memory and Context Poisoning | High | ASI06 | ✅ Available |
-| Insecure Inter-Agent Communication | High | ASI07 | ✅ Available |
-| Cascading Failures | High | ASI08 | ✅ Available |
-| Human-Agent Trust Exploitation | High | ASI09 | ✅ Available |
-| Rogue Agents | Critical | ASI10 | ✅ Available |
+| Evaluator | Severity | OWASP |
+|---|---|---|
+| Agent Goal Hijacking | Critical | ASI01 |
+| Tool Misuse and Exploitation | Critical | ASI02 |
+| Identity and Privilege Abuse | Critical | ASI03 |
+| Unexpected Code Execution | Critical | ASI05 |
+| Memory and Context Poisoning | High | ASI06 |
+| Insecure Inter-Agent Communication | High | ASI07 |
+| Cascading Failures | High | ASI08 |
+| Human-Agent Trust Exploitation | High | ASI09 |
+| Rogue Agents | Critical | ASI10 |
 
-Each evaluator includes multiple attack patterns at different difficulty levels (basic, intermediate, advanced).
+### Suites
 
-## Suites
+| ID | Name | Covers |
+|---|---|---|
+| `owasp-llm-top10` | OWASP LLM Top 10 | LLM01–LLM10 (10 evaluators) |
+| `owasp-agentic-ai` | OWASP Agentic AI Top 10 | ASI01–ASI10 (10 evaluators) |
 
-Compose evaluators into standard suites:
+---
 
-### For LLM Applications
-- **OWASP LLM Top 10** (2025) — the industry standard for LLM application security
+## Understanding the report
 
-### For Agentic AI Systems
-- **OWASP Agentic AI Top 10** (2024) — security framework for agents, tool-using models, and autonomous workflows
+The HTML report (`.astra/reports/astra-*.html`) contains:
 
-### Future Suites
-- **MITRE ATLAS** — adversarial threat landscape for AI systems
-- **EU AI Act** — compliance testing for high-risk AI systems (Article 9)
+- **Safety score** — percentage of tests where the target defended successfully
+- **Evaluator results table** — pass/fail counts and average score per evaluator
+- **Findings** — critical and high severity failures ranked by score
+- **Full test cases** — every prompt sent, response received, and judge verdict (expandable)
 
-Or run a custom selection of specific evaluators.
+The JSON report (`.astra/reports/astra-*.json`) contains the same data in machine-readable form for CI integration.
 
-## Target types
-
-Works against any AI system you can send text to:
-
-- **Chatbots** — customer support, internal tools, consumer products
-- **RAG pipelines** — retrieval-augmented generation systems
-- **AI Agents** — tool-using agents with MCP, function calling, or plugin access
-- **API endpoints** — any LLM-powered API
-- **Raw LLMs** — test the model itself via provider APIs
-
-## Application Context
-
-The more context you provide, the more effective the attacks. When configuring a target, you describe:
-
-- **What it does** — Purpose and scope
-- **Who uses it** — User types and access levels
-- **Sensitive data it handles** — PII, financial, medical, etc.
-- **Dangerous actions it can perform** — High-risk operations
-- **Topics it should never discuss** — Forbidden subjects
-
-Evaluators use this context to craft **white-box attacks** that specifically target:
-- The guardrails defined in the system prompt
-- The scope boundaries you define
-- The sensitive data and operations you identify
-- The topics it should refuse
-
-This makes attacks much more realistic and targeted than generic black-box tests.
-
-## CLI & CI/CD
-
-Use the CLI runner with support for multiple LLM providers:
-
-```bash
-# Claude Code (default)
-npx astra run --config astra.config.md --provider claude
-
-# Custom suite
-npx astra run --config astra.config.md --suite owasp-llm-top10 --provider claude
-
-# Specific evaluators
-npx astra run --config astra.config.md --evaluators jailbreaking,prompt-injection
-
-# Fail on severity
-npx astra run --config astra.config.md --fail-on critical
-```
-
-Use in GitHub Actions:
-
-```yaml
-# .github/workflows/redteam.yml
-- name: Red Team Scan
-  run: npx astra run --config astra.config.md --fail-on critical
-```
-
-See [runner/cli/README.md](runner/cli/README.md) for all options, examples, and provider support roadmap.
-
-## What makes this different
-
-| | astra | Code-based tools (DeepTeam, PyRIT, Garak) |
-| --- | --- | --- |
-| **Setup** | Install skills, talk to your agent | Write Python, configure callbacks, set API keys |
-| **Runtime** | Your existing AI coding agent | Python/Node.js process |
-| **Learning curve** | Describe your target in plain English | Learn the framework's API and config format |
-| **Extensibility** | Write a markdown file | Write Python classes |
-| **CI/CD** | Config file + headless agent | Config file + CLI runner |
+---
 
 ## Project structure
 
 ```
 astra/
-├── astra.config.md.example            ← Config template for users
 ├── package.json                       ← NPM metadata, bin entry
 ├── README.md                          ← This file
 ├── Agents.md                          ← Developer guide
+├── astra.config.md.example            ← Config template for skills workflow
 ├── LICENSE                            ← Apache 2.0
 │
-├── .astra/configs/                           ← User-created configs (not packaged)
-│   ├── chatbot-prod.md                ← Example: Production support bot
-│   ├── rag-pipeline.md                ← Example: RAG system
-│   └── README.md                      ← How to create and manage configs
+├── skills/                            ← Agent skill files (skills workflow)
+│   ├── astra-setup/
+│   │   ├── SKILL.md                   ← /astra-setup slash command
+│   │   ├── evaluators/                ← 20 evaluator definition files
+│   │   ├── suites/                    ← Suite definitions
+│   │   └── targets/                   ← Target adapter instructions
+│   └── astra-run/
+│       ├── SKILL.md                   ← /astra-run slash command
+│       └── report-schema.md           ← Report format specification
 │
-├── skills/
-│   ├── redteam-setup/               ← /redteam-setup slash command
-│   │   └── SKILL.md                   ← Interactive config wizard
-│   │
-│   └── redteam-run/                  ← /redteam-run slash command
-│       ├── SKILL.md                   ← Assessment orchestrator + executor
-│       ├── evaluators/                ← 20 evaluators (OWASP LLM + Agentic AI)
-│       ├── suites/                    ← Suite definitions (referenced by redteam-setup via ../)
-│       └── targets/                   ← Target adapters (referenced by redteam-setup via ../)
+├── cli/                               ← Standalone CLI (TypeScript)
+│   ├── src/
+│   │   ├── index.ts                   ← CLI entrypoint
+│   │   ├── commands/                  ← init, setup, run commands
+│   │   ├── config/                    ← Types and skill catalog loader
+│   │   ├── evaluators/                ← Parser, prompt generator, judge
+│   │   ├── lib/                       ← HTTP attack agent
+│   │   ├── providers/                 ← LLM provider factory
+│   │   └── report/                    ← HTML + JSON report generator
+│   ├── dist/                          ← Compiled output (generated)
+│   ├── package.json
+│   └── tsconfig.json
 │
-├── runner/                            ← CLI + extension runners
-│   ├── cli/
-│   │   ├── index.js                   ← Provider-agnostic CLI (Node.js)
-│   │   └── README.md                  ← CLI usage & examples
-│   └── extension/
-│       └── README.md                  ← VS Code extension (planned)
+├── extension/                         ← VS Code/Cursor extension (planned)
 │
-└── scripts/                           ← Development helpers (future)
-    └── (validate.js, package.sh, etc.)
-```
-
-## Architecture Overview
-
-**Evaluator-centric model**:
-- Each **evaluator** is a self-contained skill that tests for a specific vulnerability (e.g., jailbreaking, prompt injection)
-- Each evaluator has **built-in attack patterns** (basic, intermediate, advanced) and evaluation criteria
-- **Suites** compose evaluators into standard test collections (OWASP LLM Top 10, MITRE ATLAS, etc.)
-- **Target adapters** handle different target types (HTTP endpoints, custom functions, etc.) — extensible by dropping a file
-
-**Provider-agnostic CLI**:
-- Works with any LLM provider (Claude, OpenAI, Ollama, etc.)
-- Currently Claude Code is fully supported; others are planned
-- Supports `--suite` to run a standard suite or `--evaluators` for custom selection
-
-**Skill design**:
-- Top-level skills orchestrate the workflow (config, run)
-- Evaluator skills are standalone — can be run individually or composed into suites
-- No separate vulnerability/attack/evaluator files — attack patterns are inline in evaluator skills
-- No code SDK — everything is markdown that agents read and execute
-
-See [Agents.md](Agents.md) for detailed contributor documentation.
-
-## Testing & Development
-
-### Local Testing with Colleagues
-
-Before publishing to npm, test the skills in development:
-
-```bash
-# Colleagues clone your repo
-git clone https://github.com/yourusername/astra.git
-cd astra
-
-# Option 1: Use skills directly from repo
-npx claude -p "Read the skill at ./skills/redteam-setup.md"
-
-# Option 2: Symlink skills to Claude Code
-mkdir -p ~/.claude/skills
-ln -s $(pwd)/skills ~/.claude/skills/astra
-
-# Then in Claude Code, reference the skill:
-# "Red team my AI system using the astra skills"
-```
-
-### Publishing to npm
-
-When ready for public release:
-
-```bash
-# 1. Verify version in package.json
-grep '"version"' package.json
-
-# 2. Tag the release
-git tag -a v0.2.0 -m "Release v0.2.0"
-
-# 3. Publish to npm
-npm publish
-
-# 4. Verify
-npm view astra
-
-# Then everyone can install:
-# npx skills add astra
+└── .astra/                            ← Generated files (not packaged)
+    ├── configs/                       ← User-created Astra configs
+    └── reports/                       ← Assessment reports
 ```
 
 ---
@@ -313,15 +363,17 @@ npm view astra
 
 Contributions are welcome. The most impactful ways to help:
 
-**Add a new evaluator skill** — create a markdown file in `skills/evaluators/` with inline attack patterns and execution instructions. See [Agents.md](Agents.md) for the evaluator schema and examples.
+**Add or improve evaluators** — edit the markdown files in `skills/astra-setup/evaluators/`. Each file contains attack patterns and evaluation criteria that both the skills workflow and the CLI use.
 
-**Add attack patterns** — more attack variations improve coverage. Each attack pattern describes a strategy the agent adapts to the target — not copy-paste prompts.
+**Add attack patterns** — more attack variations improve coverage. Each pattern is a template the LLM adapts to the specific target.
 
-**Improve evaluation criteria** — sharper criteria reduce false positives and false negatives in vulnerability detection.
+**Improve evaluation criteria** — sharper PASS/FAIL criteria reduce false positives and false negatives.
 
-**Add target adapters** — support new target types by creating adapters in `skills/targets/`. See [Agents.md](Agents.md) for the adapter schema.
+**Add target adapters** — support new target types by creating adapters in `skills/astra-setup/targets/`.
 
-**Test with different agents** — report how the skills perform across Claude Code, Cursor, Windsurf, and other agent runtimes.
+**Test with different agents** — report how the skills perform across Claude Code, Cursor, Windsurf, and other runtimes.
+
+See [Agents.md](Agents.md) for detailed contributor documentation.
 
 ## License
 

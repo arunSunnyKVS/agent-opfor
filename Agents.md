@@ -16,11 +16,11 @@ This is a **skill-based, evaluator-centric architecture**, not a code library:
 User runs:        npx skills add astra
 What installs:    skills/ directory with evaluators, suites, and orchestrator
 User tells agent: "Red team my chatbot using OWASP LLM Top 10"
-Agent reads:      skills/redteam-setup.md (config wizard)
-                  → skills/redteam-run.md (orchestrator)
-                  → skills/suites/owasp-llm-top10.md (suite definition)
-                  → skills/jailbreaking.md (evaluator, self-contained)
-                  → skills/prompt-injection.md (evaluator, self-contained)
+Agent reads:      skills/astra-setup/SKILL.md (config wizard)
+                  → skills/astra-run/SKILL.md (runner)
+                  → skills/astra-setup/suites/owasp-llm-top10.md (suite definition)
+                  → skills/astra-setup/evaluators/jailbreaking.md (evaluator)
+                  → skills/astra-setup/evaluators/prompt-injection.md (evaluator)
 Agent executes:   Structured red team assessment using specified evaluators
                   → generates report with findings
 ```
@@ -51,16 +51,15 @@ astra/                        ← Development repo
 │   └── README.md                     ← Docs on creating/managing configs
 │
 ├── skills/
-│   ├── redteam-setup/              ← Skill 1: /redteam-setup slash command
-│   │   └── SKILL.md                  ← Interactive config wizard (discovers suites/targets from ../redteam-run/)
+│   ├── astra-setup/                 ← Skill 1: /astra-setup slash command
+│   │   ├── SKILL.md                 ← Interactive config wizard
+│   │   ├── evaluators/              ← 20 evaluator definitions (YAML frontmatter)
+│   │   ├── suites/                  ← OWASP LLM Top 10, Agentic AI Top 10
+│   │   └── targets/                 ← http-endpoint, custom-function adapters
 │   │
-│   └── redteam-run/                 ← Skill 2: /redteam-run slash command
-│       ├── SKILL.md                  ← Orchestrator + executor (full instructions)
-│       ├── evaluators/               ← 20 evaluators (self-contained)
-│       │   ├── prompt-injection.md
-│       │   └── (19 more...)
-│       ├── suites/                   ← OWASP LLM Top 10, Agentic AI Top 10 (source of truth)
-│       └── targets/                  ← http-endpoint, custom-function (source of truth)
+│   └── astra-run/                   ← Skill 2: /astra-run slash command
+│       ├── SKILL.md                 ← Orchestrator + executor (full instructions)
+│       └── report-schema.md         ← Report HTML/JSON specification
 │
 ├── runner/                           ← CLI and extension runners
 │   ├── cli/
@@ -81,14 +80,14 @@ astra/                        ← Development repo
 
 These are the files an agent invokes directly. They have YAML frontmatter describing when to trigger.
 
-#### `skills/redteam-setup.md`
+#### `skills/astra-setup/SKILL.md`
 
 **Purpose**: Interactive configuration wizard to set up a red team assessment.
 
 **Frontmatter:**
 ```yaml
 ---
-name: redteam-setup
+name: astra-setup
 description: >
   Configure a target for AI red team assessment. Trigger when the user wants
   to set up a new target, configure what to test, or create a astra.config.md.
@@ -104,16 +103,16 @@ description: >
 4. Ask for depth (basic or thorough)
 5. Ask for notes/context
 6. Write `astra.config.md` with all configuration
-7. Confirm and tell user they can now run `redteam-run`
+7. Confirm and tell user they can now run `astra-run` (slash: `/astra-run`)
 
-#### `skills/redteam-run.md`
+#### `skills/astra-run/SKILL.md`
 
 **Purpose**: Orchestrator that executes the assessment using specified evaluators.
 
 **Frontmatter:**
 ```yaml
 ---
-name: redteam-run
+name: astra-run
 description: >
   Execute a red team assessment against a configured AI target. Trigger when
   the user wants to run, start, execute, or resume a red team assessment.
@@ -451,7 +450,7 @@ Focus on refund bypass attacks
 
 **Adding a new target type**:
 1. Create `skills/astra/targets/<type>.md` with Request Construction, Response Parsing, etc.
-2. Agent auto-discovers it when user runs `redteam-setup` — no other changes needed
+2. Agent auto-discovers it when user runs `/astra-setup` — no other changes needed
 
 ---
 
@@ -531,7 +530,7 @@ Let's say you want to add a **Sensitive Information Disclosure** evaluator:
 
 ## Testing
 
-1. **Manual testing with agents**: Install skill locally, invoke `redteam-setup`, then `redteam-run`. Test across Claude Code, Cursor, Windsurf.
+1. **Manual testing with agents**: Install skill locally, invoke `/astra-setup`, then `/astra-run`. Test across Claude Code, Cursor, Windsurf.
 
 2. **Mock targets**: Test evaluators against known-vulnerable mock targets to verify they correctly identify issues.
 

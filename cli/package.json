@@ -1,0 +1,37 @@
+{
+  "name": "astra-cli",
+  "version": "0.1.0",
+  "description": "Astra CLI — AI red team scanner (TypeScript implementation)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "astra": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.77",
+    "@ai-sdk/google": "^2.0.70",
+    "@ai-sdk/openai": "^2.0.103",
+    "@ai-sdk/openai-compatible": "^1.0.0",
+    "@inquirer/prompts": "^8.4.2",
+    "ai": "^6.0.0",
+    "commander": "^14.0.1",
+    "groq-sdk": "^1.1.2",
+    "yaml": "^2.8.3",
+    "zod": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3"
+  }
+}

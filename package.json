@@ -22,11 +22,12 @@
   },
   "homepage": "https://github.com/yourusername/astra",
   "bin": {
-    "astra": "runner/cli/index.js"
+    "astra": "cli/dist/index.js"
   },
   "files": [
     "skills/",
-    "runner/",
+    "cli/dist/",
+    "extension/",
     "astra.config.md.example",
     "README.md",
     "Agents.md",
@@ -34,9 +35,9 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
   },
   "scripts": {
-    "validate": "node scripts/validate.js"
+    "build": "npm --prefix cli install && npm --prefix cli run build"
   }
 }

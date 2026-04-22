@@ -22,7 +22,7 @@ Tell your agent:
 "Configure a new red team target"
 ```
 
-The agent will use `skills/redteam-setup.md` to guide you through:
+The agent will use `skills/astra-setup/SKILL.md` to guide you through:
 - Target information (name, type, endpoint)
 - Application Context (purpose, users, data, actions, forbidden topics)
 - System prompt (if available)
@@ -43,7 +43,7 @@ Or use the CLI:
 npx astra run --config .astra/configs/my-target.md
 ```
 
-The agent uses `skills/redteam-run.md` to orchestrate the assessment and generate a report.
+The agent uses `skills/astra-run/SKILL.md` to orchestrate the assessment and generate a report.
 
 ---
 
@@ -53,7 +53,7 @@ The agent uses `skills/redteam-run.md` to orchestrate the assessment and generat
 
 ```
 You:    "Configure a red team target"
-Agent:  (should load redteam-setup.md and ask questions about target)
+Agent:  (should load skills/astra-setup/SKILL.md and ask questions about target)
 Result: Should create .astra/configs/my-target.md
 ```
 
@@ -87,14 +87,14 @@ npx astra run --config .astra/configs/my-target.md --suite owasp-agentic-ai
 
 ## What to Test
 
-### Configuration Wizard (`redteam-setup.md`)
+### Configuration Wizard (`skills/astra-setup/SKILL.md`)
 - [ ] Asks for target information
 - [ ] Lists available target types
 - [ ] Lists available suites
 - [ ] Lists available evaluators
 - [ ] Saves config to `.astra/configs/` folder with all fields
 
-### Assessment Runner (`redteam-run.md`)
+### Assessment Runner (`skills/astra-run/SKILL.md`)
 - [ ] Loads config from `.astra/configs/` folder
 - [ ] Loads target adapter correctly
 - [ ] Runs selected evaluators
@@ -138,12 +138,12 @@ If something doesn't work, report:
 
 ## Common Issues
 
-### "Can't find skill at ./skills/redteam-setup.md"
+### "Can't find skill at ./skills/astra-setup/SKILL.md"
 
 **Solution**: Make sure you're in the repo root directory and path is correct:
 ```bash
 cd astra
-ls skills/redteam-setup.md  # Should exist
+ls skills/astra-setup/SKILL.md  # Should exist
 ```
 
 ### "No config file found"
@@ -151,26 +151,26 @@ ls skills/redteam-setup.md  # Should exist
 **Solution**: Create one first:
 ```bash
 npx astra run --config .astra/configs/test.md
-# Or: Let redteam-setup skill create one
+# Or: Let /astra-setup skill create one
 ```
 
 ### "Evaluator not found"
 
 **Solution**: Make sure evaluators exist:
 ```bash
-ls skills/evaluators/  # Should show 20 evaluators
+ls skills/astra-setup/evaluators/  # Should show 20 evaluators
 ```
 
 ### Config saved to wrong location
 
 **Expected**: `.astra/configs/my-target.md`
-**Check**: Make sure `redteam-setup.md` is writing to `.astra/configs/` folder
+**Check**: Make sure the setup skill is writing to `.astra/configs/` folder
 
 ---
 
 ## Success Checklist
 
-- [ ] Can load redteam-setup skill
+- [ ] Can load astra-setup skill
 - [ ] Can create a config with Application Context
 - [ ] Can run a basic assessment
 - [ ] Can see evaluator results in report
@@ -187,5 +187,5 @@ Check:
 1. `README.md` — quick start and feature overview
 2. `Agents.md` — architecture and schema documentation
 3. `.astra/configs/README.md` — configuration management
-4. `skills/redteam-setup.md` — full config wizard workflow
-5. `skills/redteam-run.md` — full assessment runner workflow
+4. `skills/astra-setup/SKILL.md` — full config wizard workflow
+5. `skills/astra-run/SKILL.md` — full assessment runner workflow

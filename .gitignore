@@ -14,3 +14,11 @@ node_modules/
 
 # OS
 .DS_Store
+dist/
+temp/
+cli/node_modules/
+.astra
+
+# Local Astra CLI / wizard output (may contain secrets)
+astra.config.json
+astra-prompts-*.json
