@@ -8,11 +8,14 @@ import type { EvaluatorSpec } from "@astra/core/evaluators/parseEvaluator";
 import type { AttackEntry, PromptsFile } from "@astra/core/config/types";
 import type { RunAgentConfigHttp } from "@astra/core/lib/agent";
 import { runAttackAgent } from "@astra/core/lib/agent";
+import { invokeLocalTargetScript } from "@astra/core/lib/localScriptTarget";
 
 export interface RunOptions {
   inputPath: string;
   apiKey?: string;
   outputDir?: string;
+  /** If set, run attacks against this script (stdin JSON, stdout JSON response). */
+  targetScript?: string;
 }
 
 export interface RunSummary {
@@ -41,7 +44,7 @@ export interface RunSummary {
 }
 
 export async function runScan(opts: RunOptions): Promise<RunSummary> {
-  const { inputPath, apiKey: apiKeyOverride, outputDir = ".astra/reports" } = opts;
+  const { inputPath, apiKey: apiKeyOverride, outputDir = ".astra/reports", targetScript: targetScriptOpt } = opts;
 
   const raw = await readFile(path.resolve(inputPath), "utf8");
   const promptsFile = JSON.parse(raw) as PromptsFile;
@@ -50,8 +53,26 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
   if (!attacks || attacks.length === 0) {
     throw new Error("No attack entries in the prompts file. Run astra_setup first.");
   }
-  if (target.type === "http-endpoint" && !target.endpoint) {
+
+  const targetScriptCli = targetScriptOpt?.trim() ?? "";
+  const resolvedScript = targetScriptCli
+    ? path.resolve(process.cwd(), targetScriptCli)
+    : target.type === "local-script" && target.scriptPath?.trim()
+      ? path.resolve(process.cwd(), target.scriptPath.trim())
+      : target.type === "python-function" && target.scriptPath?.trim()
+        ? path.resolve(process.cwd(), target.scriptPath.trim())
+        : null;
+
+  const useLocalScript = Boolean(resolvedScript);
+  const useHttp = target.type === "http-endpoint" && !useLocalScript;
+
+  if (useHttp && !target.endpoint) {
     throw new Error("Target type is http-endpoint but no endpoint URL is specified.");
+  }
+  if (target.type === "local-script" && !useLocalScript) {
+    throw new Error(
+      "Target type is local-script but no script path. Set target.scriptPath in config or pass targetScript."
+    );
   }
 
   const llm = {
@@ -94,7 +115,7 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
     let testNumber = 1;
 
     for (const attack of entries) {
-      if (target.type === "http-endpoint") {
+      if (useHttp) {
         const agentCfg: RunAgentConfigHttp = {
           attack,
           targetApiKey: target.targetApiKey,
@@ -111,18 +132,36 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
           response: result.response,
           judge: result.judge,
         });
-      } else {
+      } else if (useLocalScript && resolvedScript) {
+        const responseText = await invokeLocalTargetScript(resolvedScript, {
+          prompt: attack.prompt,
+          context: { targetName: target.name },
+        });
         const judgeResult = await judgeResponse(
           evaluatorSpec,
           attack.prompt,
-          "(python-function target — no HTTP call made; manual review required)",
+          responseText,
           model
         );
         results.push({
           testNumber: totalRun + testNumber,
           pattern: attack.patternName,
           prompt: attack.prompt,
-          response: "(python-function — manual review required)",
+          response: responseText,
+          judge: judgeResult,
+        });
+      } else {
+        const judgeResult = await judgeResponse(
+          evaluatorSpec,
+          attack.prompt,
+          "(no target script — configure local-script / scriptPath or pass targetScript)",
+          model
+        );
+        results.push({
+          testNumber: totalRun + testNumber,
+          pattern: attack.patternName,
+          prompt: attack.prompt,
+          response: "(skipped — no local script configured)",
           judge: judgeResult,
         });
       }
@@ -137,10 +176,19 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
   const resolvedOutputDir = path.resolve(outputDir);
   await mkdir(resolvedOutputDir, { recursive: true });
 
+  const transportLabel = useLocalScript
+    ? `local script: ${resolvedScript}`
+    : useHttp
+      ? endpoint
+      : target.type === "python-function"
+        ? "python-function (no script path)"
+        : "(not configured)";
+  const reportEndpoint = useLocalScript && resolvedScript ? resolvedScript : endpoint || transportLabel;
+
   const reportPaths = await generateReport(
     reports,
     target.name,
-    endpoint || "(python-function)",
+    reportEndpoint,
     resolvedOutputDir,
     judgeLabel
   );

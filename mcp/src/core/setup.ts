@@ -88,9 +88,14 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
       continue; // skip if evaluator file not found
     }
 
-    const targetDescription = target.type === "python-function"
-      ? `${target.description}\nFunction signature: ${target.functionSignature ?? ""}`
-      : target.description;
+    const targetDescription =
+      target.type === "local-script"
+        ? `${target.description}\nTarget runs as a subprocess: stdin is JSON {"prompt","context"}. ` +
+          `Stdout must be JSON with a string field "response". Script: ${target.scriptPath ?? ""}. ` +
+          `Interpreter is chosen from the file extension (.py → python3, .js/.mjs/.cjs → node).`
+        : target.type === "python-function"
+          ? `${target.description}\nFunction signature: ${target.functionSignature ?? ""}`
+          : target.description;
 
     const attacks = await generateAttackPrompts(evaluator, targetDescription, model);
 

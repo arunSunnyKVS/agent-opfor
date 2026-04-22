@@ -89,11 +89,14 @@ async function runInteractiveWizard(
   const llm = await collectLlmConfig();
 
   // --- Target type ---
-  const targetType = await select<"http-endpoint" | "python-function">({
+  const targetType = await select<"http-endpoint" | "local-script">({
     message: "Target type:",
     choices: [
-      { name: "HTTP Endpoint  (REST API, OpenAI-compatible, or custom JSON)", value: "http-endpoint" },
-      { name: "Python Function  (describe function signature, LLM tailors prompts)", value: "python-function" },
+      { name: "HTTP endpoint (REST / OpenAI-compatible / custom JSON)", value: "http-endpoint" },
+      {
+        name: "Local script (.js or .py — JSON on stdin, JSON with response on stdout)",
+        value: "local-script",
+      },
     ],
   });
 
@@ -133,11 +136,12 @@ async function runInteractiveWizard(
       targetApiKey: targetApiKey.trim() || undefined,
     };
   } else {
-    const functionSignature = await input({
-      message: "Describe the function signature (inputs, outputs, what it does):",
+    const scriptPath = await input({
+      message:
+        "Path to script (e.g. ./astra-local-target.js or .py — node vs python3 is chosen from the extension):",
       validate: (v) => v.trim() !== "" || "Required",
     });
-    target = { ...target, functionSignature };
+    target = { ...target, scriptPath: scriptPath.trim() };
   }
 
   // --- Evaluator selection ---
@@ -280,9 +284,14 @@ export function registerSetupCommand(program: Command) {
           continue;
         }
 
-        const targetDescription = target.type === "python-function"
-          ? `${target.description}\nFunction signature: ${target.functionSignature ?? ""}`
-          : target.description;
+        const targetDescription =
+          target.type === "local-script"
+            ? `${target.description}\nTarget runs as a subprocess: stdin is JSON {"prompt","context"}. ` +
+              `Stdout must be JSON with a string field "response". Script: ${target.scriptPath ?? ""}. ` +
+              `Interpreter is chosen from the file extension (.py → python3, .js/.mjs/.cjs → node).`
+            : target.type === "python-function"
+              ? `${target.description}\nFunction signature: ${target.functionSignature ?? ""}`
+              : target.description;
 
         process.stdout.write(` generating ${evaluator.patterns.length} prompt(s)...`);
         const attacks = await generateAttackPrompts(evaluator, targetDescription, model);

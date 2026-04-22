@@ -10,13 +10,15 @@ export interface LlmConfig {
 export interface TargetConfig {
   name: string;
   description: string;
-  type: "http-endpoint" | "python-function";
+  type: "http-endpoint" | "local-script" | "python-function";
   // http-endpoint fields
   endpoint?: string;
   requestFormat?: "auto" | "openai" | "json";
   targetApiKey?: string;
   targetModel?: string;
-  // python-function fields
+  /** Path to .js or .py for type local-script (JSON stdin → JSON stdout). */
+  scriptPath?: string;
+  /** @deprecated Prefer type local-script with scriptPath. */
   functionSignature?: string;
 }
 
@@ -49,11 +51,12 @@ export interface SetupConfigFile {
   target: {
     name: string;
     description: string;
-    type: "http-endpoint" | "python-function";
+    type: "http-endpoint" | "local-script" | "python-function";
     endpoint?: string;
     requestFormat?: "auto" | "openai" | "json";
     targetApiKey?: string;
     targetModel?: string;
+    scriptPath?: string;
     functionSignature?: string;
   };
   selection:

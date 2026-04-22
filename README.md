@@ -198,6 +198,63 @@ astra run --input astra-prompts-<timestamp>.json --api-key gsk_your-key-here
 astra run --input astra-prompts-<timestamp>.json --output-dir ./reports
 ```
 
+### Local target scripts (`.js` / `.py`)
+
+When your target is not a single HTTP URL—or you want a small **adapter** that forwards to your API—you can use a **local script**. This is optional; HTTP-only workflows can skip this section.
+
+**Contract (one attack = one process):**
+
+| Stream | Content |
+|--------|---------|
+| **Stdin** | One JSON object: `{"prompt":"...","context":{...}}`. `context` may include fields such as `targetName`. |
+| **Stdout** | One JSON object: `{"response":"..."}` on success, or `{"error":"..."}` on failure. The runner parses stdout as JSON—do not print debug lines to stdout. |
+| **Stderr** | Log freely with `console.error` (Node) or writes to stderr (Python); the CLI forwards stderr to your terminal during `astra run`. |
+
+**Interpreter:** Astra picks the runtime from the file extension—`.py` / `.pyw` → `python3`, `.js` / `.mjs` / `.cjs` → `node`. You do not configure “Python vs JavaScript” separately.
+
+**Paths:** `target.scriptPath` in config and `--target-script` on the CLI are resolved relative to the **current working directory** when you run `astra setup` / `astra run` (usually your repo root). Example: `./astra-local-target.js`.
+
+**Generate starter files** (sample stubs only; does not write `astra.config.json`):
+
+```bash
+astra init --example python          # writes astra-local-target.py
+astra init --example node            # writes astra-local-target.js
+astra init --example both
+astra init --example node --script-dir ./scripts   # custom directory
+```
+
+**Wire it in config** — use `local-script` and a path to your file:
+
+```json
+"target": {
+  "name": "My stack (via adapter)",
+  "description": "What the system does, data it touches, and policies.",
+  "type": "local-script",
+  "scriptPath": "./astra-local-target.js"
+}
+```
+
+Then `astra setup --config ...` embeds that target in the generated `astra-prompts-*.json`. **Run** with the prompts file only:
+
+```bash
+astra run --input astra-prompts-<timestamp>.json
+```
+
+**Override** the prompts file’s target and force a script (e.g. quick test, or prompts say HTTP but you want the adapter):
+
+```bash
+astra run --input astra-prompts-<timestamp>.json --target-script ./astra-local-target.js
+```
+
+**Sanity-check without a full scan:**
+
+```bash
+echo '{"prompt":"hello","context":{}}' | node ./astra-local-target.js
+echo '{"prompt":"hello","context":{}}' | python3 ./astra-local-target.py
+```
+
+> **Note:** `--input` must always be the **`astra-prompts-*.json`** from `astra setup`, not the `.js` / `.py` path. The script path is either `target.scriptPath` inside that JSON or `--target-script`.
+
 ### CLI commands reference
 
 | Command | Description |
@@ -207,6 +264,7 @@ astra run --input astra-prompts-<timestamp>.json --output-dir ./reports
 | `astra setup --config <file>` | Non-interactive setup from a JSON or YAML config file |
 | `astra setup --config <file> --api-key <key>` | Setup with API key passed directly |
 | `astra run --input <file>` | Fire attacks and generate HTML + JSON report |
+| `astra run --input <file> --target-script <path>` | Run each attack via a local `.js`/`.py` (stdin/stdout JSON); overrides an HTTP target when set |
 | `astra run --input <file> --api-key <key>` | Run with API key override |
 
 ### Config fields reference
@@ -219,7 +277,8 @@ astra run --input astra-prompts-<timestamp>.json --output-dir ./reports
 | `llm.baseURL` | Only for `other` | Base URL for custom OpenAI-compatible endpoints. |
 | `target.name` | Yes | Human-readable name for the target. |
 | `target.description` | Yes | What the target does, what data it has access to, restrictions. More detail = better attacks. |
-| `target.type` | Yes | `http-endpoint` or `python-function`. |
+| `target.type` | Yes | `http-endpoint` or `local-script` (.js or .py; runtime is inferred from the extension). |
+| `target.scriptPath` | For `local-script` | Path to the adapter script (e.g. `./astra-local-target.js`), relative to the cwd when you run `astra run`. |
 | `target.endpoint` | For HTTP | Full URL to POST attacks to. |
 | `target.requestFormat` | For HTTP | `openai` (messages array) or `json` (`{prompt: "..."}` body). |
 | `target.targetModel` | For HTTP | Model name to send in the request body. |
@@ -412,7 +471,7 @@ astra/
 │   │   ├── config/                    ← Types, skill catalog loader, path resolver
 │   │   ├── evaluators/                ← Evaluator parser, prompt generator, LLM judge
 │   │   ├── providers/                 ← LLM provider factory (OpenAI, Anthropic, Groq, Google)
-│   │   ├── lib/                       ← HTTP attack agent
+│   │   ├── lib/                       ← HTTP attack agent, local script subprocess helper
 │   │   ├── report/                    ← HTML + JSON report generator
 │   │   └── util/                      ← YAML frontmatter parser
 │   ├── dist/                          ← Compiled output (generated by npm run build)

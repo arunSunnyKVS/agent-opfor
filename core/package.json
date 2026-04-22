@@ -13,6 +13,7 @@
     "./evaluators/judge": "./dist/evaluators/judge.js",
     "./providers/factory": "./dist/providers/factory.js",
     "./lib/agent": "./dist/lib/agent.js",
+    "./lib/localScriptTarget": "./dist/lib/localScriptTarget.js",
     "./report/generateReport": "./dist/report/generateReport.js",
     "./util/yamlFrontmatter": "./dist/util/yamlFrontmatter.js"
   },
