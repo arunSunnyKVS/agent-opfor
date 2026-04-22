@@ -1,4 +1,4 @@
-# astra
+# 🏹 astra
 
 Red team AI systems — using your coding agent, a standalone CLI, or an MCP server.
 
@@ -6,12 +6,14 @@ Red team AI systems — using your coding agent, a standalone CLI, or an MCP ser
 
 You can use it in three ways:
 
-| | Skills (agent-based) | CLI (standalone) | MCP Server |
-|---|---|---|---|
-| **How** | Agent reads skill files and executes the test | `astra init / setup / run` commands | Agent calls `astra_setup` / `astra_run` tools |
-| **Requires** | Claude Code, Cursor, Windsurf, or any agent with skills support | Node.js 18+, any LLM API key | Any MCP-compatible host (Cursor, Claude Desktop, Windsurf) |
-| **Best for** | Interactive setup, white-box attacks, conversational workflow | CI/CD pipelines, automated scans, scripted workflows | Agent-driven automation without leaving your IDE |
-| **Output** | Markdown report in chat | HTML + JSON report on disk | Summary in chat + HTML/JSON reports on disk |
+
+|              | Skills (agent-based)                                            | CLI (standalone)                                     | MCP Server                                                 |
+| ------------ | --------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
+| **How**      | Agent reads skill files and executes the test                   | `astra init / setup / run` commands                  | Agent calls `astra_setup` / `astra_run` tools              |
+| **Requires** | Claude Code, Cursor, Windsurf, or any agent with skills support | Node.js 18+, any LLM API key                         | Any MCP-compatible host (Cursor, Claude Desktop, Windsurf) |
+| **Best for** | Interactive setup, white-box attacks, conversational workflow   | CI/CD pipelines, automated scans, scripted workflows | Agent-driven automation without leaving your IDE           |
+| **Output**   | Markdown report in chat                                         | HTML + JSON report on disk                           | Summary in chat + HTML/JSON reports on disk                |
+
 
 ---
 
@@ -38,6 +40,7 @@ Run the setup skill in your agent:
 ```
 
 The agent will guide you through:
+
 - **Target Information** — name, type, endpoint, model
 - **Application Context** — what it does, user types, sensitive data, dangerous actions, forbidden topics
 - **System Prompt** — the actual instructions the target runs under (optional but improves attack quality)
@@ -52,6 +55,7 @@ Result: a config folder is created at `.astra/configs/<uuid>/` with the config a
 ```
 
 The agent will:
+
 1. Load your configuration and pre-generated attack inputs
 2. Fire each attack at your target
 3. Judge every response (PASS/FAIL) with evidence
@@ -73,6 +77,23 @@ See [astra.config.md.example](astra.config.md.example) for the full template.
 
 The CLI is a self-contained TypeScript tool that handles everything: interactive setup, attack prompt generation, firing attacks, judging responses, and producing reports — all without an agent.
 
+### How the pieces fit together
+
+| Command | What it does |
+| --------|---------------|
+| **`astra init`** | Writes a **starter** `astra.config.json` in the current directory. Optional; skip if you prefer the wizard or hand-write YAML/JSON. |
+| **`astra init --example …`** | Writes **only** sample `astra-local-target.py` / `.js` stubs (no config). Optional; for local-script targets. |
+| **`astra setup`** | **Interactive wizard** — asks questions in the terminal, then writes `astra-prompts-<timestamp>.json`. **No config file required.** You still need an LLM API key (env var or `--api-key`). |
+| **`astra setup --config <file>`** | **Non-interactive** — reads your JSON/YAML config, then writes `astra-prompts-<timestamp>.json`. Use this in CI or when you already edited a file. |
+| **`astra run --input <prompts.json>`** | Runs attacks using the **target** stored inside the prompts file (HTTP URL or local script path), judges responses, writes HTML + JSON reports. |
+
+**Typical paths:**
+
+1. **Config-first:** `astra init` (optional) → edit `astra.config.json` (or YAML) → set API key (env or file) → `astra setup --config astra.config.json` → `astra run --input astra-prompts-….json`
+2. **Wizard-only:** ensure API key in env → `astra setup` (answer prompts) → `astra run --input astra-prompts-….json`
+
+`setup` always produces the prompts file; `run` always consumes that file. `--target-script` on `run` can override the target to a local `.js`/`.py` for a quick test (see **Local target scripts** below).
+
 ### Requirements
 
 - Node.js 18+
@@ -87,18 +108,28 @@ cd astra
 npm install --ignore-scripts
 npm run build
 npm install -g ./cli   # make the `astra` command available globally
-
-# Once published to npm
-npm install -g astra
 ```
 
-### Step 1 — Create a config file
+### Step 1 — Create or reuse a config file (optional)
+
+If you use **`astra setup --config …`**, you need a JSON or YAML file first. If you use **`astra setup`** alone (wizard), you can **skip this step**.
 
 ```bash
 astra init
 ```
 
-This writes `astra.config.json` in the current directory. Edit it with your target details.
+`astra init` writes a template **`astra.config.json`** in the current directory. Edit it with your target details, or create `astra.config.yml` by hand using the same fields.
+
+**Sample Python / Node adapters (no config file):** Use `astra init` with `--example` to drop starter scripts that match the **local target** stdin/stdout JSON contract. Handy when you want a `.py` or `.js` stub before editing `astra.config.json`.
+
+```bash
+astra init --example python    # writes astra-local-target.py
+astra init --example node      # writes astra-local-target.js
+astra init --example both      # writes both files in the current directory
+astra init --example python --script-dir ./scripts   # put stubs under ./scripts
+```
+
+These commands **do not** write `astra.config.json`. After you customize the script, set `target.type` to `local-script` and `target.scriptPath` in your config (or pass `--target-script` to `astra run`). Full contract and examples are in **Local target scripts** below.
 
 **Config file format:**
 
@@ -135,9 +166,8 @@ target:
   description: >
     A customer support chatbot with access to user booking data and PII.
     It can issue partial refunds and look up bookings by name.
-  type: http-endpoint
-  endpoint: http://localhost:4000/chat
-  requestFormat: openai
+  type: local-script
+  scriptPath: ./astra-local-target.py # run with python3; generate stub: astra init --example python
 
 selection:
   mode: evaluators
@@ -150,14 +180,16 @@ selection:
 
 ### Step 2 — Set your LLM API key
 
-The LLM is used to generate attack prompts and judge responses. You have three ways to supply the key, in priority order:
+The LLM is used during **`astra setup`** (prompt generation) and **`astra run`** (judging). You need a key for both paths (wizard or `--config`). Supply it in one of these ways, in priority order when multiple are set:
 
 **Option A — CLI flag (highest priority):**
+
 ```bash
 astra setup --config astra.config.json --api-key gsk_your-key-here
 ```
 
 **Option B — Environment variable:**
+
 ```bash
 export GROQ_API_KEY=your-key-here       # Groq (free tier available)
 export OPENAI_API_KEY=your-key-here     # OpenAI
@@ -166,27 +198,31 @@ export GOOGLE_GENERATIVE_AI_API_KEY=... # Google
 ```
 
 **Option C — Config file field:**
+
 ```json
 { "llm": { "provider": "groq", "apiKey": "gsk_your-key-here" } }
 ```
+
 > **Note:** Avoid committing the config file if it contains an API key. Add `astra.config.json` and `astra-prompts-*.json` to `.gitignore`.
 
-### Step 3 — Generate attack prompts
+### Step 3 — Generate attack prompts (`setup`)
+
+Pick **one** of these; both write **`astra-prompts-<timestamp>.json`** (attack prompts + embedded target metadata for `run`).
 
 ```bash
-# From config file (non-interactive)
+# A — From a config file (non-interactive; good for CI or a checked-in config)
 astra setup --config astra.config.json
-
-# With API key passed directly on the command line
 astra setup --config astra.config.json --api-key gsk_your-key-here
 
-# Or run interactively (no config needed)
+# B — Interactive wizard (no config file; answers in the terminal)
 astra setup
 ```
 
-This writes `astra-prompts-<timestamp>.json` containing all generated attack prompts.
+For **B**, you do not need `astra init` first. For **A**, use the file from Step 1 (or any valid JSON/YAML path).
 
 ### Step 4 — Run the scan
+
+`--input` is always the **prompts JSON** from Step 3, not your `.js`/`.py` adapter.
 
 ```bash
 astra run --input astra-prompts-<timestamp>.json
@@ -196,6 +232,9 @@ astra run --input astra-prompts-<timestamp>.json --api-key gsk_your-key-here
 
 # Write reports to a custom directory
 astra run --input astra-prompts-<timestamp>.json --output-dir ./reports
+
+# Optional: force attacks through a local script (see Local target scripts)
+astra run --input astra-prompts-<timestamp>.json --target-script ./astra-local-target.js
 ```
 
 ### Local target scripts (`.js` / `.py`)
@@ -204,11 +243,13 @@ When your target is not a single HTTP URL—or you want a small **adapter** that
 
 **Contract (one attack = one process):**
 
-| Stream | Content |
-|--------|---------|
-| **Stdin** | One JSON object: `{"prompt":"...","context":{...}}`. `context` may include fields such as `targetName`. |
+
+| Stream     | Content                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stdin**  | One JSON object: `{"prompt":"...","context":{...}}`. `context` may include fields such as `targetName`.                                                 |
 | **Stdout** | One JSON object: `{"response":"..."}` on success, or `{"error":"..."}` on failure. The runner parses stdout as JSON—do not print debug lines to stdout. |
-| **Stderr** | Log freely with `console.error` (Node) or writes to stderr (Python); the CLI forwards stderr to your terminal during `astra run`. |
+| **Stderr** | Log freely with `console.error` (Node) or writes to stderr (Python); the CLI forwards stderr to your terminal during `astra run`.                       |
+
 
 **Interpreter:** Astra picks the runtime from the file extension—`.py` / `.pyw` → `python3`, `.js` / `.mjs` / `.cjs` → `node`. You do not configure “Python vs JavaScript” separately.
 
@@ -253,64 +294,75 @@ echo '{"prompt":"hello","context":{}}' | node ./astra-local-target.js
 echo '{"prompt":"hello","context":{}}' | python3 ./astra-local-target.py
 ```
 
-> **Note:** `--input` must always be the **`astra-prompts-*.json`** from `astra setup`, not the `.js` / `.py` path. The script path is either `target.scriptPath` inside that JSON or `--target-script`.
+> **Note:** `--input` must always be the prompts file from `astra setup` (name like `astra-prompts-*.json`), not the `.js` / `.py` path. The script path is either `target.scriptPath` inside that JSON or `--target-script`.
 
 ### CLI commands reference
 
-| Command | Description |
-|---|---|
-| `astra init` | Generate a sample `astra.config.json` |
-| `astra setup` | Interactive wizard to collect config and generate attack prompts |
-| `astra setup --config <file>` | Non-interactive setup from a JSON or YAML config file |
-| `astra setup --config <file> --api-key <key>` | Setup with API key passed directly |
-| `astra run --input <file>` | Fire attacks and generate HTML + JSON report |
+
+| Command                                           | Description                                                                                    |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `astra init`                                      | Generate a sample `astra.config.json`                                                          |
+| `astra init --example python` / `node` / `both`   | Write sample `astra-local-target.py` and/or `.js` only (stdin/stdout JSON); optional `--script-dir` |
+| `astra setup`                                     | Interactive wizard to collect config and generate attack prompts                               |
+| `astra setup --config <file>`                     | Non-interactive setup from a JSON or YAML config file                                          |
+| `astra setup --config <file> --api-key <key>`     | Setup with API key passed directly                                                             |
+| `astra run --input <file>`                        | Fire attacks and generate HTML + JSON report                                                   |
 | `astra run --input <file> --target-script <path>` | Run each attack via a local `.js`/`.py` (stdin/stdout JSON); overrides an HTTP target when set |
-| `astra run --input <file> --api-key <key>` | Run with API key override |
+| `astra run --input <file> --api-key <key>`        | Run with API key override                                                                      |
+
 
 ### Config fields reference
 
-| Field | Required | Description |
-|---|---|---|
-| `llm.provider` | No | `groq`, `openai`, `anthropic`, `google`, or `other`. Defaults to `groq`. |
-| `llm.model` | No | Model name. Defaults to provider's recommended model. |
-| `llm.apiKey` | No | API key. If omitted, read from the corresponding env var. |
-| `llm.baseURL` | Only for `other` | Base URL for custom OpenAI-compatible endpoints. |
-| `target.name` | Yes | Human-readable name for the target. |
-| `target.description` | Yes | What the target does, what data it has access to, restrictions. More detail = better attacks. |
-| `target.type` | Yes | `http-endpoint` or `local-script` (.js or .py; runtime is inferred from the extension). |
-| `target.scriptPath` | For `local-script` | Path to the adapter script (e.g. `./astra-local-target.js`), relative to the cwd when you run `astra run`. |
-| `target.endpoint` | For HTTP | Full URL to POST attacks to. |
-| `target.requestFormat` | For HTTP | `openai` (messages array) or `json` (`{prompt: "..."}` body). |
-| `target.targetModel` | For HTTP | Model name to send in the request body. |
-| `target.targetApiKey` | For HTTP | Bearer token for the target endpoint, if needed. |
-| `selection.mode` | Yes | `suite` or `evaluators`. |
-| `selection.suite` | For suite | `owasp-llm-top10` or `owasp-agentic-ai`. |
-| `selection.evaluators` | For evaluators | Array of evaluator IDs (see list below). |
+
+| Field                  | Required           | Description                                                                                                |
+| ---------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `llm.provider`         | No                 | `groq`, `openai`, `anthropic`, `google`, or `other`. Defaults to `groq`.                                   |
+| `llm.model`            | No                 | Model name. Defaults to provider's recommended model.                                                      |
+| `llm.apiKey`           | No                 | API key. If omitted, read from the corresponding env var.                                                  |
+| `llm.baseURL`          | Only for `other`   | Base URL for custom OpenAI-compatible endpoints.                                                           |
+| `target.name`          | Yes                | Human-readable name for the target.                                                                        |
+| `target.description`   | Yes                | What the target does, what data it has access to, restrictions. More detail = better attacks.              |
+| `target.type`          | Yes                | `http-endpoint` or `local-script` (.js or .py; runtime is inferred from the extension).                    |
+| `target.scriptPath`    | For `local-script` | Path to the adapter script (e.g. `./astra-local-target.js`), relative to the cwd when you run `astra run`. |
+| `target.endpoint`      | For HTTP           | Full URL to POST attacks to.                                                                               |
+| `target.requestFormat` | For HTTP           | `openai` (messages array) or `json` (`{prompt: "..."}` body).                                              |
+| `target.targetModel`   | For HTTP           | Model name to send in the request body.                                                                    |
+| `target.targetApiKey`  | For HTTP           | Bearer token for the target endpoint, if needed.                                                           |
+| `selection.mode`       | Yes                | `suite` or `evaluators`.                                                                                   |
+| `selection.suite`      | For suite          | `owasp-llm-top10` or `owasp-agentic-ai`.                                                                   |
+| `selection.evaluators` | For evaluators     | Array of evaluator IDs (see list below).                                                                   |
+
 
 ### Supported LLM providers
 
-| Provider | Env var | Default model |
-|---|---|---|
-| `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
-| `openai` | `OPENAI_API_KEY` | `gpt-4o-mini` |
-| `anthropic` | `ANTHROPIC_API_KEY` | `claude-3-5-haiku-20241022` |
-| `google` | `GOOGLE_GENERATIVE_AI_API_KEY` | `gemini-2.0-flash` |
-| `other` | `ASTRA_API_KEY` | (requires `llm.baseURL`) |
+
+| Provider    | Env var                        | Default model               |
+| ----------- | ------------------------------ | --------------------------- |
+| `groq`      | `GROQ_API_KEY`                 | `llama-3.3-70b-versatile`   |
+| `openai`    | `OPENAI_API_KEY`               | `gpt-4o-mini`               |
+| `anthropic` | `ANTHROPIC_API_KEY`            | `claude-3-5-haiku-20241022` |
+| `google`    | `GOOGLE_GENERATIVE_AI_API_KEY` | `gemini-2.0-flash`          |
+| `other`     | `ASTRA_API_KEY`                | (requires `llm.baseURL`)    |
+
 
 ### Target endpoint formats
 
-**`openai`** — OpenAI messages format:
+**openai** — OpenAI messages format:
+
 ```json
 POST /chat
 { "model": "...", "messages": [{ "role": "user", "content": "attack prompt" }] }
 ```
+
 Response parsed from `choices[0].message.content`.
 
-**`json`** — Generic JSON format:
+**json** — Generic JSON format:
+
 ```json
 POST /chat
 { "prompt": "attack prompt" }
 ```
+
 Response parsed from `.response` field.
 
 ### CI/CD integration
@@ -383,10 +435,12 @@ The agent will call `astra_setup` → then `astra_run` → return a full finding
 
 ### MCP tools reference
 
-| Tool | Parameters | Description |
-|---|---|---|
-| `astra_setup` | `config_path`, `api_key?`, `output_dir?` | Generate attack prompts from a config file |
-| `astra_run` | `input_path`, `api_key?`, `output_dir?` | Fire attacks, judge responses, write reports |
+
+| Tool          | Parameters                               | Description                                  |
+| ------------- | ---------------------------------------- | -------------------------------------------- |
+| `astra_setup` | `config_path`, `api_key?`, `output_dir?` | Generate attack prompts from a config file   |
+| `astra_run`   | `input_path`, `api_key?`, `output_dir?`  | Fire attacks, judge responses, write reports |
+
 
 See [mcp/README.md](mcp/README.md) for full parameter details.
 
@@ -396,40 +450,46 @@ See [mcp/README.md](mcp/README.md) for full parameter details.
 
 ### LLM Vulnerabilities (OWASP LLM Top 10)
 
-| Evaluator | Severity | OWASP |
-|---|---|---|
-| Prompt Injection | Critical | LLM01 |
+
+| Evaluator                        | Severity | OWASP |
+| -------------------------------- | -------- | ----- |
+| Prompt Injection                 | Critical | LLM01 |
 | Sensitive Information Disclosure | Critical | LLM02 |
-| Supply Chain Vulnerabilities | High | LLM03 |
-| Data and Model Poisoning | High | LLM04 |
-| Improper Output Handling | High | LLM05 |
-| Excessive Agency | High | LLM06 |
-| System Prompt Leakage | Critical | LLM07 |
-| Vector and Embedding Weaknesses | High | LLM08 |
-| Misinformation | High | LLM09 |
-| Unbounded Consumption | High | LLM10 |
-| Jailbreaking | High | LLM10 |
+| Supply Chain Vulnerabilities     | High     | LLM03 |
+| Data and Model Poisoning         | High     | LLM04 |
+| Improper Output Handling         | High     | LLM05 |
+| Excessive Agency                 | High     | LLM06 |
+| System Prompt Leakage            | Critical | LLM07 |
+| Vector and Embedding Weaknesses  | High     | LLM08 |
+| Misinformation                   | High     | LLM09 |
+| Unbounded Consumption            | High     | LLM10 |
+| Jailbreaking                     | High     | LLM10 |
+
 
 ### Agentic AI Vulnerabilities (OWASP Agentic AI Top 10)
 
-| Evaluator | Severity | OWASP |
-|---|---|---|
-| Agent Goal Hijacking | Critical | ASI01 |
-| Tool Misuse and Exploitation | Critical | ASI02 |
-| Identity and Privilege Abuse | Critical | ASI03 |
-| Unexpected Code Execution | Critical | ASI05 |
-| Memory and Context Poisoning | High | ASI06 |
-| Insecure Inter-Agent Communication | High | ASI07 |
-| Cascading Failures | High | ASI08 |
-| Human-Agent Trust Exploitation | High | ASI09 |
-| Rogue Agents | Critical | ASI10 |
+
+| Evaluator                          | Severity | OWASP |
+| ---------------------------------- | -------- | ----- |
+| Agent Goal Hijacking               | Critical | ASI01 |
+| Tool Misuse and Exploitation       | Critical | ASI02 |
+| Identity and Privilege Abuse       | Critical | ASI03 |
+| Unexpected Code Execution          | Critical | ASI05 |
+| Memory and Context Poisoning       | High     | ASI06 |
+| Insecure Inter-Agent Communication | High     | ASI07 |
+| Cascading Failures                 | High     | ASI08 |
+| Human-Agent Trust Exploitation     | High     | ASI09 |
+| Rogue Agents                       | Critical | ASI10 |
+
 
 ### Suites
 
-| ID | Name | Covers |
-|---|---|---|
-| `owasp-llm-top10` | OWASP LLM Top 10 | LLM01–LLM10 (10 evaluators) |
+
+| ID                 | Name                    | Covers                      |
+| ------------------ | ----------------------- | --------------------------- |
+| `owasp-llm-top10`  | OWASP LLM Top 10        | LLM01–LLM10 (10 evaluators) |
 | `owasp-agentic-ai` | OWASP Agentic AI Top 10 | ASI01–ASI10 (10 evaluators) |
+
 
 ---
 
