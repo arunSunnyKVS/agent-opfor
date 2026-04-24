@@ -110,15 +110,9 @@ selection:
 
 ## Step 2 — API key
 
-The LLM is used during `astra setup` (prompt generation) and `astra run` (judging). Priority order:
+The LLM key is used during `astra setup` (prompt generation) and `astra run` (judging). Set it before running either command.
 
-**A — CLI flag (highest priority):**
-
-```bash
-astra setup --config astra.config.json --api-key gsk_your-key-here
-```
-
-**B — Environment variable / `.env` file:**
+**A — Environment variable / `.env` file (recommended):**
 
 ```bash
 export GROQ_API_KEY=your-key-here
@@ -129,10 +123,17 @@ export GOOGLE_GENERATIVE_AI_API_KEY=...
 
 The CLI loads `.env` from the current working directory automatically. Add `.env` to `.gitignore`.
 
-**C — Config file field:**
+**B — Config file field:**
 
 ```json
 { "llm": { "provider": "groq", "apiKey": "gsk_your-key-here" } }
+```
+
+**C — CLI flag (overrides A and B):**
+
+```bash
+astra setup --config astra.config.json --api-key gsk_your-key-here
+astra run --input astra-prompts-….json --api-key gsk_your-key-here
 ```
 
 > Avoid committing a config file that contains an API key. Add `astra.config.json` and `astra-prompts-*.json` to `.gitignore`.
@@ -234,19 +235,58 @@ Multi-turn requires your target to maintain conversation history across requests
 
 ---
 
-## Langfuse telemetry (optional)
+## Telemetry (optional)
 
-When `telemetry.provider: langfuse` is set in the config, astra fetches production traces during `setup` to ground attack prompts in real user language and flows.
+When a telemetry provider is configured, astra does two things:
 
-Set keys in the environment — do not put them in the config file:
+1. **Setup** — fetches real production traces and uses them to ground attack prompts in actual user language and flows, producing more targeted attacks.
+2. **Run** — optionally injects a trace ID into each target request (`propagation.traceIdBodyField`) so the recorded trace can be fetched after the attack and passed to the LLM judge, giving it visibility into internal tool calls, retrieved data, and intermediate reasoning — not just the final response.
+
+### Langfuse
+
+```json
+"telemetry": {
+  "provider": "langfuse",
+  "langfuse": {
+    "baseUrl": "https://cloud.langfuse.com",
+    "traceSelection": { "lookbackHours": 24 }
+  }
+}
+```
+
+Set credentials in the environment (never in the config file):
 
 ```bash
 export LANGFUSE_PUBLIC_KEY=pk-lf-...
 export LANGFUSE_SECRET_KEY=sk-lf-...
-export LANGFUSE_BASE_URL=https://cloud.langfuse.com   # optional; for self-hosted
 ```
 
-For different env var names (e.g. in CI), set `langfuse.publicKeyEnv` and `langfuse.secretKeyEnv` in the config to the variable names; the CLI reads the values at runtime.
+For custom env var names use `langfuse.publicKeyEnv` / `langfuse.secretKeyEnv` in the config.
+
+### Netra
+
+```json
+"telemetry": {
+  "provider": "netra",
+  "netra": {
+    "baseUrl": "http://localhost:3000",
+    "traceSelection": { "lookbackHours": 24 }
+  },
+  "propagation": {
+    "traceIdBodyField": "trace_id",
+    "traceIdStrategy": "per-attack"
+  },
+  "enrichJudgeFromTrace": true
+}
+```
+
+Set the API key in the environment:
+
+```bash
+export NETRA_API_KEY=NE_...
+```
+
+For a custom env var name use `netra.apiKeyEnv` in the config. `propagation.traceIdBodyField` must match a field your agent reads from the request body and forwards to the Netra SDK as the active OTel trace ID — without that wiring, judge enrichment won't correlate correctly.
 
 ---
 
@@ -302,6 +342,10 @@ For different env var names (e.g. in CI), set `langfuse.publicKeyEnv` and `langf
 | `selection.evaluators` | For evaluators | Array of evaluator IDs. |
 | `turnMode` | No | `single` (default) or `multi`. |
 | `turns` | No | Number of turns per attack when `turnMode` is `multi`. Defaults to `3`. |
+| `telemetry.provider` | No | `langfuse`, `netra`, or `none` (default). |
+| `telemetry.propagation.traceIdBodyField` | No | Request body field to inject a trace ID into (e.g. `trace_id`). Requires the target agent to forward it to the telemetry SDK. |
+| `telemetry.propagation.traceIdStrategy` | No | `per-attack` (default) or `per-run`. |
+| `telemetry.enrichJudgeFromTrace` | No | Fetch the recorded trace after each attack and pass spans to the LLM judge. Default `false`. |
 
 ---
 
