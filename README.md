@@ -461,69 +461,9 @@ Each attack sequence gets a fresh UUID. Single-turn attacks are unaffected when 
 
 ## Option 3 — MCP Server
 
-The MCP server exposes `astra_setup` and `astra_run` as tools that any MCP-compatible AI agent can call directly. No terminal required — the agent runs the full workflow from your chat.
+The MCP server exposes Astra as tools (`astra_list_evaluators`, `astra_setup`, `astra_run`) that any MCP-compatible agent can call directly — no terminal required.
 
-### Setup
-
-```bash
-git clone https://github.com/yourusername/astra.git
-cd astra
-npm install --ignore-scripts   # install all workspace packages
-npm run build                  # build core → cli → mcp in the correct order
-```
-
-### Configure in Cursor
-
-Add to `~/.cursor/mcp.json` (global — works in all projects):
-
-```json
-{
-  "mcpServers": {
-    "astra": {
-      "command": "node",
-      "args": ["/absolute/path/to/astra/mcp/dist/index.js"]
-    }
-  }
-}
-```
-
-The server automatically reads your API key from the project's `.env` file. No `env` block needed if you use `.env`.
-
-### Configure in Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "astra": {
-      "command": "node",
-      "args": ["/absolute/path/to/astra/mcp/dist/index.js"]
-    }
-  }
-}
-```
-
-### Usage
-
-Once registered, just talk to your agent:
-
-```
-"Red team my chatbot using ./myconfig.json"
-```
-
-The agent will call `astra_setup` → then `astra_run` → return a full findings summary in chat, with HTML and JSON reports saved to disk.
-
-### MCP tools reference
-
-
-| Tool          | Parameters                               | Description                                  |
-| ------------- | ---------------------------------------- | -------------------------------------------- |
-| `astra_setup` | `config_path`, `api_key?`, `output_dir?` | Generate attack prompts from a config file   |
-| `astra_run`   | `input_path`, `api_key?`, `output_dir?`  | Fire attacks, judge responses, write reports |
-
-
-See [mcp/README.md](mcp/README.md) for full parameter details.
+See **[docs/mcp.md](docs/mcp.md)** for full setup, configuration, tool parameters, and Langfuse trace integration.
 
 ---
 
