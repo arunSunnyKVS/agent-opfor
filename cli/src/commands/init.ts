@@ -1,56 +1,40 @@
 import type { Command } from "commander";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { SetupConfigFile } from "@astra/core/config/types";
 
-const SAMPLE_CONFIG: SetupConfigFile = {
-  llm: {
-    provider: "openai",
-    model: "gpt-4o-mini",
-    apiKey: "",
-    // baseURL: ""  — only for provider "other" (OpenAI-compatible endpoint)
+const SAMPLE_CONFIG = `{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKey": ""
   },
-  target: {
-    name: "My AI Agent",
-    description: "Describe your application here. Include: what it does, types of users, sensitive data it handles, dangerous actions it can perform, topics it should never discuss.",
-    type: "http-endpoint",
-    endpoint: "http://localhost:4000/chat",
-    requestFormat: "openai",
-    targetModel: "gpt-4o-mini",
-    // targetApiKey: ""  — Bearer token for target endpoint (optional)
-    // scriptPath: "./astra-local-target.js"  — only for type "local-script"
+  "target": {
+    "name": "My AI Agent",
+    "description": "Describe your application here. Include: what it does, types of users, sensitive data it handles, dangerous actions it can perform, topics it should never discuss.",
+    "type": "http-endpoint",
+    "endpoint": "http://localhost:4000/chat",
+    "requestFormat": "openai",
+    "targetModel": "gpt-4o-mini"
   },
-  selection: {
-    mode: "suite",
-    suite: "owasp-llm-top10",
-    // To pick individual evaluators instead:
-    // mode: "evaluators",
-    // evaluators: ["prompt-injection", "jailbreaking", "sensitive-disclosure"]
+  "selection": {
+    "mode": "suite",
+    "suite": "owasp-llm-top10"
   },
-  // Optional: telemetry. Never put Langfuse keys here — use env:
-  //   export LANGFUSE_PUBLIC_KEY=pk-lf-...
-  //   export LANGFUSE_SECRET_KEY=sk-lf-...
-  // Optional langfuse.publicKeyEnv / secretKeyEnv rename which env vars are read.
-  telemetry: {
-    provider: "none",
-    // provider: "langfuse",
-    // langfuse: {
-    //   baseUrlEnv: "LANGFUSE_BASE_URL",
-    //   traceSelection: { listLimit: 100, listMaxPages: 3 },
-    //   traceCurationListJsonMaxChars: 28000,
-    //   traceSummaryForAttackMaxChars: 26000,
-    // },
-    // enrichJudgeFromTrace: true,
-    // propagation: { traceIdStrategy: "per-attack", headers: { "X-Langfuse-Trace-Id": "{{traceId}}" } },
-  },
-};
+  "turnMode": "single",
+  "telemetry": {
+    "provider": "none"
+  }
+}
+`;
 
 const PYTHON_STUB = `#!/usr/bin/env python3
 """Astra local target stub (stdin/stdout JSON).
 
-Planned contract for a future local-script target type:
-  - Read one JSON object from stdin with keys: prompt, context (optional).
-  - Print one JSON line/object to stdout: {"response": "..."} or {"error": "..."}.
+Stdin:  one JSON object { "prompt": "...", "context": {...}, "sessionId": "..." }
+Stdout: one JSON object { "response": "..." } or { "error": "..." }
+
+sessionId is present for multi-turn attacks. Use it to key your own conversation
+history so the agent under test can maintain context across turns.
 
 Replace the stub body with your model, tools, or API calls.
 """
@@ -70,13 +54,19 @@ def main() -> None:
 
     prompt = data.get("prompt", "")
     context = data.get("context") or {}
+    session_id = data.get("sessionId")  # present for multi-turn attacks; None for single-turn
     name = context.get("targetName", "?")
 
     # -------------------------------------------------------------------------
     # EDIT HERE: Replace the demo reply below. Call your own function, HTTP API,
     # LLM SDK, or whatever backs your app — then assign the result to reply.
-    # Inputs: prompt (user message), context (optional harness metadata).
-    # Output: reply becomes the "response" string in the JSON printed to stdout.
+    #
+    # For multi-turn support: use session_id to look up and store conversation
+    # history so your agent can respond in context across turns.
+    #
+    # Inputs:  prompt (current user message), session_id (None = single-turn),
+    #          context (harness metadata e.g. targetName)
+    # Output:  reply string → printed as {"response": reply}
     # -------------------------------------------------------------------------
     reply = (
         f"[astra-local-target demo] target={name}\\n"
@@ -94,9 +84,11 @@ const NODE_STUB = `#!/usr/bin/env node
 /**
  * Astra local target stub (stdin/stdout JSON).
  *
- * Planned contract for a future local-script target type:
- *   - Read one JSON object from stdin: { version, prompt, context? }
- *   - Write one JSON object to stdout: { response: "..." } or { error: "..." }
+ * Stdin:  one JSON object { "prompt": "...", "context": {...}, "sessionId": "..." }
+ * Stdout: one JSON object { "response": "..." } or { "error": "..." }
+ *
+ * sessionId is present for multi-turn attacks. Use it to key your own conversation
+ * history so the agent under test can maintain context across turns.
  *
  * Replace the stub body with your model, tools, or API calls.
  *
@@ -117,13 +109,19 @@ try {
 
 const prompt = data.prompt ?? "";
 const context = data.context ?? {};
+const sessionId = data.sessionId; // present for multi-turn attacks; undefined for single-turn
 const name = context.targetName ?? "?";
 
 // ---------------------------------------------------------------------------
 // EDIT HERE: Replace the demo reply below. Call your own function, HTTP API,
 // LLM SDK, or whatever backs your app — then assign the result to reply.
-// Inputs: prompt (user message), context (optional harness metadata).
-// Output: reply becomes the "response" string in the JSON printed to stdout.
+//
+// For multi-turn support: use sessionId to look up and store conversation
+// history so your agent can respond in context across turns.
+//
+// Inputs:  prompt (current user message), sessionId (undefined = single-turn),
+//          context (harness metadata e.g. targetName)
+// Output:  reply becomes the "response" string in the JSON printed to stdout.
 // ---------------------------------------------------------------------------
 const reply =
   "[astra-local-target demo] target=" +
@@ -181,7 +179,7 @@ export function registerInitCommand(program: Command): void {
           console.log("\nSample local target script(s) written:");
           for (const p of written) console.log(`  ${p}`);
           console.log(
-            "\nContract (planned): stdin JSON { prompt, context? } → stdout JSON { response } or { error }."
+            "\nContract: stdin JSON { prompt, context?, sessionId? } → stdout JSON { response } or { error }."
           );
           console.log(
             'Test: echo \'{"prompt":"hi","context":{}}\' | python3 astra-local-target.py'
@@ -196,7 +194,7 @@ export function registerInitCommand(program: Command): void {
           return;
         }
 
-        await writeFile(opts.output, JSON.stringify(SAMPLE_CONFIG, null, 2), "utf8");
+        await writeFile(opts.output, SAMPLE_CONFIG, "utf8");
         console.log(`\nConfig template written to: ${opts.output}`);
         console.log(`Edit it, then run: astra setup --config ${opts.output}`);
         console.log(

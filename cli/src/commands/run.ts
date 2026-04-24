@@ -4,13 +4,14 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createModel } from "@astra/core/providers/factory";
 import { judgeResponse } from "@astra/core/evaluators/judge";
+import type { ConversationTurn } from "@astra/core/evaluators/judge";
 import { generateReport } from "@astra/core/report/generateReport";
-import type { EvaluatorReport, TestResult } from "@astra/core/report/generateReport";
+import type { EvaluatorReport, TestResult, TurnRecord } from "@astra/core/report/generateReport";
 import type { EvaluatorSpec } from "@astra/core/evaluators/parseEvaluator";
 import type { PromptsFile, AttackEntry } from "@astra/core/config/types";
 import { resolveTelemetryEnv } from "@astra/core/config/resolveTelemetryEnv";
 import type { RunAgentConfigHttp } from "@astra/core/lib/agent";
-import { runAttackAgent } from "@astra/core/lib/agent";
+import { callTargetHttp, generateNextAttackTurn } from "@astra/core/lib/agent";
 import { invokeLocalTargetScript } from "@astra/core/lib/localScriptTarget";
 import { newOtelTraceId } from "@astra/core/lib/tracePropagation";
 
@@ -149,74 +150,125 @@ export function registerRunCommand(program: Command) {
         let testNumber = 1;
 
         for (const attack of entries) {
+          const isMultiTurn = attack.turnMode === "multi";
+          const numTurns = isMultiTurn ? (attack.turns ?? 3) : 1;
+          const sessionId = isMultiTurn ? randomUUID() : undefined;
+
+          const turnLabel = isMultiTurn ? ` (multi-turn, up to ${numTurns} turns)` : "";
           process.stdout.write(
-            `  [${testNumber}/${entries.length}] ${attack.patternName.slice(0, 55).padEnd(55)}`
+            `  [${testNumber}/${entries.length}] ${attack.patternName.slice(0, 55).padEnd(55)}${turnLabel}`
           );
 
-          if (useHttp) {
-            const agentCfg: RunAgentConfigHttp = {
-              attack,
-              targetApiKey: target.targetApiKey,
+          const conversationHistory: ConversationTurn[] = [];
+          const turnResults: TurnRecord[] = [];
+          let overallVerdict: "PASS" | "FAIL" = "PASS";
+
+          const agentCfg: RunAgentConfigHttp = {
+            attack,
+            targetApiKey: target.targetApiKey,
+            model,
+            endpoint,
+            targetFormat,
+            targetModel,
+            telemetry: promptsFile.telemetry,
+            propagation,
+            runTraceOtel,
+            runId: scanRunId,
+            attackIndex: totalRun + testNumber,
+            sessionIdField: target.sessionIdField,
+            promptPath: target.promptPath,
+            responsePath: target.responsePath,
+          };
+
+          for (let t = 1; t <= numTurns; t++) {
+            // Determine the message for this turn
+            let userMessage: string;
+            if (t === 1) {
+              userMessage = attack.prompt;
+            } else {
+              userMessage = await generateNextAttackTurn(conversationHistory, attack.prompt, model);
+            }
+
+            if (isMultiTurn) {
+              process.stdout.write(`\n     → Turn ${t}: calling target...`);
+            }
+
+            // Call the target
+            let response: string;
+            if (useHttp) {
+              response = await callTargetHttp(agentCfg, userMessage, sessionId);
+            } else if (useLocalScript && resolvedScript) {
+              response = await invokeLocalTargetScript(resolvedScript, {
+                prompt: userMessage,
+                context: { targetName: target.name },
+                sessionId,
+              });
+            } else {
+              response = "(no target configured — pass --target-script or set up http-endpoint)";
+            }
+
+            // Update conversation history
+            conversationHistory.push({ role: "user", content: userMessage });
+            conversationHistory.push({ role: "assistant", content: response });
+
+            // Judge with full history context
+            if (isMultiTurn) {
+              process.stdout.write(`\n     → Turn ${t}: judging...`);
+            } else {
+              process.stdout.write(`\n     → judging response...`);
+            }
+
+            const judge = await judgeResponse(
+              evaluatorSpec,
+              userMessage,
+              response,
               model,
-              endpoint,
-              targetFormat,
-              targetModel,
-              telemetry: promptsFile.telemetry,
-              propagation,
-              runTraceOtel,
-              runId: scanRunId,
-              attackIndex: totalRun + testNumber,
-            };
-
-            const result = await runAttackAgent(agentCfg);
-            const verdict = result.judge.verdict === "PASS" ? "✓" : "✗";
-            const traceNote = result.traceId ? ` · trace ${result.traceId.slice(0, 12)}...` : "";
-            console.log(` → ${verdict} ${result.judge.verdict} (score ${result.judge.score}/10)${traceNote}`);
-
-            results.push({
-              testNumber: totalRun + testNumber,
-              pattern: attack.patternName,
-              prompt: attack.prompt,
-              response: result.response,
-              judge: result.judge,
-              ...(result.traceId ? { traceId: result.traceId } : {}),
-            });
-          } else if (useLocalScript && resolvedScript) {
-            const responseText = await invokeLocalTargetScript(resolvedScript, {
-              prompt: attack.prompt,
-              context: { targetName: target.name },
-            });
-            const judgeResult = await judgeResponse(
-              evaluatorSpec,
-              attack.prompt,
-              responseText,
-              model
+              undefined,
+              isMultiTurn ? conversationHistory : undefined
             );
-            const verdict = judgeResult.verdict === "PASS" ? "✓" : "✗";
-            console.log(` → ${verdict} ${judgeResult.verdict} (score ${judgeResult.score}/10)`);
-            results.push({
-              testNumber: totalRun + testNumber,
-              pattern: attack.patternName,
-              prompt: attack.prompt,
-              response: responseText,
-              judge: judgeResult,
-            });
-          } else {
-            const judgeResult = await judgeResponse(
-              evaluatorSpec,
-              attack.prompt,
-              "(no target script — pass --target-script ./your-target.js or configure local-script with scriptPath)",
-              model
-            );
-            console.log(` → SKIPPED (no script path; use --target-script or local-script in config)`);
-            results.push({
-              testNumber: totalRun + testNumber,
-              pattern: attack.patternName,
-              prompt: attack.prompt,
-              response: "(skipped — no local script configured)",
-              judge: judgeResult,
-            });
+
+            turnResults.push({ turnIndex: t, prompt: userMessage, response, judge });
+
+            const verdictIcon = judge.verdict === "PASS" ? "✓" : "✗";
+            if (isMultiTurn) {
+              process.stdout.write(` ${verdictIcon} ${judge.verdict} (score ${judge.score}/10)`);
+            }
+
+            // Early exit on failure
+            if (judge.verdict === "FAIL") {
+              overallVerdict = "FAIL";
+              if (isMultiTurn) {
+                process.stdout.write(` — stopping early`);
+              }
+              break;
+            }
           }
+
+          // Final result for this attack
+          const finalTurn = turnResults[turnResults.length - 1];
+          const finalJudge = finalTurn?.judge ?? {
+            verdict: "FAIL" as const,
+            score: 0,
+            confidence: 0,
+            evidence: "N/A",
+            reasoning: "No turns completed",
+          };
+
+          if (!isMultiTurn) {
+            const verdictIcon = finalJudge.verdict === "PASS" ? "✓" : "✗";
+            console.log(` → ${verdictIcon} ${finalJudge.verdict} (score ${finalJudge.score}/10)`);
+          } else {
+            console.log(""); // newline after turn-by-turn output
+          }
+
+          results.push({
+            testNumber: totalRun + testNumber,
+            pattern: attack.patternName,
+            prompt: attack.prompt,
+            response: finalTurn?.response ?? "",
+            judge: finalJudge,
+            ...(isMultiTurn ? { turns: turnResults } : {}),
+          });
 
           testNumber++;
         }

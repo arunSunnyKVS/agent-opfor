@@ -33,6 +33,8 @@ interface CollectedAnswers {
   target: TargetConfig;
   selectedEvaluatorIds: string[];
   telemetry?: TelemetryConfig;
+  turnMode?: "single" | "multi";
+  turns?: number;
 }
 
 /** After `--config`: confirm telemetry block was read (never log secret values). */
@@ -210,12 +212,37 @@ async function runInteractiveWizard(
       message: "Target API key / Bearer token (leave blank if not needed):",
       mask: "*",
     });
+
+    let promptPath: string | undefined;
+    let responsePath: string | undefined;
+    if (requestFormat === "json") {
+      const customPromptPath = await input({
+        message: "JSON body field for the prompt (leave blank for default: prompt):",
+        default: "",
+      });
+      promptPath = customPromptPath.trim() || undefined;
+
+      const customResponsePath = await input({
+        message: "Dot-path to extract response from JSON reply (leave blank for default: response):",
+        default: "",
+      });
+      responsePath = customResponsePath.trim() || undefined;
+    }
+
+    const sessionIdFieldInput = await input({
+      message: "Session ID body field for multi-turn attacks (leave blank to skip, e.g. session_id):",
+      default: "",
+    });
+
     target = {
       ...target,
       endpoint,
       requestFormat,
       targetModel,
       targetApiKey: targetApiKey.trim() || undefined,
+      ...(promptPath ? { promptPath } : {}),
+      ...(responsePath ? { responsePath } : {}),
+      ...(sessionIdFieldInput.trim() ? { sessionIdField: sessionIdFieldInput.trim() } : {}),
     };
   } else {
     const scriptPath = await input({
@@ -262,7 +289,29 @@ async function runInteractiveWizard(
     });
   }
 
-  return { llm, target, selectedEvaluatorIds };
+  // --- Attack mode ---
+  const turnMode = await select<"single" | "multi">({
+    message: "Attack mode:",
+    choices: [
+      { name: "Single-turn  (one prompt → one response, classic red team)", value: "single" },
+      { name: "Multi-turn   (conversation with escalating follow-ups)", value: "multi" },
+    ],
+  });
+
+  let turns: number | undefined;
+  if (turnMode === "multi") {
+    const turnsStr = await input({
+      message: "Number of turns per attack (default 3):",
+      default: "3",
+      validate: (v) => {
+        const n = parseInt(v, 10);
+        return (Number.isInteger(n) && n >= 2 && n <= 10) || "Enter a number between 2 and 10";
+      },
+    });
+    turns = parseInt(turnsStr, 10);
+  }
+
+  return { llm, target, selectedEvaluatorIds, turnMode, turns };
 }
 
 async function loadConfigFile(
@@ -313,6 +362,8 @@ async function loadConfigFile(
     target: cfg.target as TargetConfig,
     selectedEvaluatorIds,
     telemetry: resolveTelemetryEnv(cfg.telemetry),
+    turnMode: cfg.turnMode,
+    turns: cfg.turns,
   };
 }
 
@@ -357,7 +408,7 @@ export function registerSetupCommand(program: Command) {
         return;
       }
 
-      const { llm, target, selectedEvaluatorIds, telemetry } = answers;
+      const { llm, target, selectedEvaluatorIds, telemetry, turnMode, turns } = answers;
       const model = createModel(llm);
       const outputDir = path.resolve(opts.outputDir);
 
@@ -419,6 +470,7 @@ export function registerSetupCommand(program: Command) {
             prompt: attack.prompt,
             passCriteria: evaluator.passCriteria,
             failCriteria: evaluator.failCriteria,
+            ...(turnMode === "multi" ? { turnMode: "multi" as const, turns: turns ?? 3 } : {}),
           });
         }
       }
@@ -443,6 +495,9 @@ export function registerSetupCommand(program: Command) {
       console.log(`  Provider:  ${llm.provider} / ${llm.model}`);
       console.log(`  Evaluators: ${selectedEvaluatorIds.length}`);
       console.log(`  Total attack prompts: ${allAttacks.length}`);
+      if (turnMode === "multi") {
+        console.log(`  Attack mode: multi-turn (${turns ?? 3} turns per attack)`);
+      }
       if (telemetry !== undefined) {
         const strat = telemetry.propagation?.traceIdStrategy ?? "(not set — defaults apply when run is implemented)";
         const hdrs = telemetry.propagation?.headers;

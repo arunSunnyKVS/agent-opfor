@@ -124,6 +124,9 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
       traceContext: langfuseTraceContext,
     });
 
+    const turnMode = cfg.turnMode;
+    const turns = cfg.turns;
+
     for (const attack of attacks) {
       allAttacks.push({
         evaluatorId: evaluator.id,
@@ -134,6 +137,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
         prompt: attack.prompt,
         passCriteria: evaluator.passCriteria,
         failCriteria: evaluator.failCriteria,
+        ...(turnMode === "multi" ? { turnMode: "multi" as const, turns: turns ?? 3 } : {}),
       });
     }
   }

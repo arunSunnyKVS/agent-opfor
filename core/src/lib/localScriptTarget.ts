@@ -13,11 +13,14 @@ function interpreterCommandForPath(absPath: string): "node" | "python3" | null {
 
 /**
  * Run a local target script (.js / .mjs / .cjs or .py): write one JSON object to stdin
- * { prompt, context? }, read stdout JSON with a string "response" (or "error").
+ * `{ prompt, context?, sessionId? }`, read stdout JSON with a string "response" (or "error").
+ *
+ * For multi-turn attacks pass `sessionId` so the script can maintain its own conversation
+ * history keyed by session.
  */
 export async function invokeLocalTargetScript(
   scriptPath: string,
-  input: { prompt: string; context?: Record<string, unknown> }
+  input: { prompt: string; context?: Record<string, unknown>; sessionId?: string }
 ): Promise<string> {
   const abs = path.resolve(scriptPath);
   const command = interpreterCommandForPath(abs);
@@ -31,10 +34,12 @@ export async function invokeLocalTargetScript(
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  const stdinJson = JSON.stringify({
+  const stdinPayload: Record<string, unknown> = {
     prompt: input.prompt,
     context: input.context ?? {},
-  });
+  };
+  if (input.sessionId) stdinPayload.sessionId = input.sessionId;
+  const stdinJson = JSON.stringify(stdinPayload);
 
   let stdout = "";
   let stderr = "";
