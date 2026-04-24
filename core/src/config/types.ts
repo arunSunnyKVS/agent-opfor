@@ -230,6 +230,24 @@ export interface TargetConfig {
   requestFormat?: "auto" | "openai" | "json";
   targetApiKey?: string;
   targetModel?: string;
+  /**
+   * For multi-turn attacks: JSON body field name to inject a session ID on every request
+   * (e.g. "session_id"). The target uses this to maintain its own conversation history.
+   * Leave unset to skip session ID injection.
+   */
+  sessionIdField?: string;
+  /**
+   * Dot-path for where to place the user prompt in the JSON request body (requestFormat: "json").
+   * Supports nested paths (e.g. "input.message" → { input: { message: "..." } }).
+   * Defaults to top-level "prompt" when unset.
+   */
+  promptPath?: string;
+  /**
+   * Dot-path to extract the assistant reply from the HTTP response JSON.
+   * Supports nested paths (e.g. "data.reply" → response.data.reply).
+   * When unset, falls back to the built-in chain: choices[0].message.content → response → output → text → message.
+   */
+  responsePath?: string;
   /** Path to .js or .py for type local-script (JSON stdin → JSON stdout). */
   scriptPath?: string;
   /** @deprecated Prefer type local-script with scriptPath. */
@@ -245,6 +263,10 @@ export interface AttackEntry {
   prompt: string;
   passCriteria: string;
   failCriteria: string;
+  /** "single" (default) fires one prompt; "multi" runs a multi-turn conversation. */
+  turnMode?: "single" | "multi";
+  /** Number of turns for multi-turn mode (default 3). */
+  turns?: number;
 }
 
 export interface PromptsFile {
@@ -277,6 +299,9 @@ export interface SetupConfigFile {
     requestFormat?: "auto" | "openai" | "json";
     targetApiKey?: string;
     targetModel?: string;
+    sessionIdField?: string;
+    promptPath?: string;
+    responsePath?: string;
     scriptPath?: string;
     functionSignature?: string;
   };
@@ -284,4 +309,8 @@ export interface SetupConfigFile {
     | { mode: "suite"; suite: string }
     | { mode: "evaluators"; evaluators: string[] };
   telemetry?: TelemetryConfig;
+  /** "single" (default) or "multi" — applied to all generated attack entries. */
+  turnMode?: "single" | "multi";
+  /** Number of turns for multi-turn mode (default 3). */
+  turns?: number;
 }

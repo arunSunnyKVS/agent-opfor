@@ -4,6 +4,14 @@ import { randomUUID } from "node:crypto";
 import type { EvaluatorSpec } from "../evaluators/parseEvaluator.js";
 import type { JudgeResult } from "../evaluators/judge.js";
 
+/** A single turn in a multi-turn attack sequence. */
+export interface TurnRecord {
+  turnIndex: number;
+  prompt: string;
+  response: string;
+  judge: JudgeResult;
+}
+
 export interface TestResult {
   testNumber: number;
   pattern: string;
@@ -12,6 +20,8 @@ export interface TestResult {
   judge: JudgeResult;
   /** Propagated OTEL/Langfuse trace id (32 hex) when telemetry propagation was used for this attack. */
   traceId?: string;
+  /** Present for multi-turn attacks — full turn-by-turn breakdown. */
+  turns?: TurnRecord[];
 }
 
 export interface EvaluatorReport {
@@ -154,6 +164,14 @@ export async function generateReport(
           evidence: t.judge.evidence,
           reasoning: t.judge.reasoning,
           ...(t.traceId ? { traceId: t.traceId } : {}),
+          ...(t.turns ? {
+            turns: t.turns.map(turn => ({
+              turnIndex: turn.turnIndex,
+              verdict: turn.judge.verdict,
+              score: turn.judge.score,
+              reasoning: turn.judge.reasoning,
+            })),
+          } : {}),
         })),
       };
     }),
@@ -197,12 +215,32 @@ export async function generateReport(
     const emoji = severityEmoji(r.evaluator.severity);
     const cases = r.results.map((t) => {
       const verdictColor = t.judge.verdict === "PASS" ? "#10B981" : "#EF4444";
+      const isMultiTurn = t.turns && t.turns.length > 0;
+
+      const turnsHtml = isMultiTurn ? t.turns!.map((turn) => {
+        const tColor = turn.judge.verdict === "PASS" ? "#10B981" : "#EF4444";
+        return `
+            <div style="margin:6px 0;padding:8px 10px;background:#fff;border-radius:4px;border-left:2px solid ${tColor}">
+              <div style="font-size:12px;font-weight:600;color:${tColor};margin-bottom:4px">Turn ${turn.turnIndex}: ${turn.judge.verdict} (score ${turn.judge.score}/10)</div>
+              <div style="margin-bottom:3px"><span style="color:#6B7280;font-size:11px">Prompt:</span> <code style="font-size:11px;white-space:pre-wrap">${esc(turn.prompt)}</code></div>
+              <div style="margin-bottom:3px"><span style="color:#6B7280;font-size:11px">Response:</span> <code style="font-size:11px;white-space:pre-wrap">${esc(turn.response)}</code></div>
+              <div style="color:#6B7280;font-size:11px">${esc(turn.judge.reasoning)}</div>
+            </div>`;
+      }).join("") : "";
+
       return `
         <div style="margin:12px 0;padding:12px;background:#F9FAFB;border-radius:6px;border-left:3px solid ${verdictColor}">
-          <div style="font-weight:600;margin-bottom:6px">Test ${t.testNumber}: ${esc(t.pattern)}</div>
+          <div style="font-weight:600;margin-bottom:6px">Test ${t.testNumber}: ${esc(t.pattern)}${isMultiTurn ? ` <span style="font-size:11px;font-weight:400;color:#6B7280">(multi-turn, ${t.turns!.length} turn${t.turns!.length !== 1 ? "s" : ""})</span>` : ""}</div>
           ${t.traceId ? `<div style="margin-bottom:4px;font-size:12px"><span style="color:#6B7280">Trace id:</span> <code>${esc(t.traceId)}</code></div>` : ""}
-          <div style="margin-bottom:4px"><span style="color:#6B7280">Prompt:</span> <code style="font-size:12px">${esc(t.prompt.slice(0, 200))}${t.prompt.length > 200 ? "..." : ""}</code></div>
-          <div style="margin-bottom:4px"><span style="color:#6B7280">Response:</span> <code style="font-size:12px">${esc(t.response.slice(0, 200))}${t.response.length > 200 ? "..." : ""}</code></div>
+          ${isMultiTurn ? `
+          <div style="margin-bottom:6px">
+            <details>
+              <summary style="font-size:13px;color:#374151;cursor:pointer">Turn-by-turn breakdown</summary>
+              <div style="margin-top:8px">${turnsHtml}</div>
+            </details>
+          </div>` : `
+          <div style="margin-bottom:4px"><span style="color:#6B7280">Prompt:</span> <code style="font-size:12px;white-space:pre-wrap">${esc(t.prompt)}</code></div>
+          <div style="margin-bottom:4px"><span style="color:#6B7280">Response:</span> <code style="font-size:12px;white-space:pre-wrap">${esc(t.response)}</code></div>`}
           <div><span style="color:#6B7280">Judge:</span> <strong style="color:${verdictColor}">${t.judge.verdict}</strong> · Score ${t.judge.score}/10 · Confidence ${t.judge.confidence}% · Evidence: ${esc(t.judge.evidence)}</div>
           <div style="color:#6B7280;font-size:13px;margin-top:4px">${esc(t.judge.reasoning)}</div>
         </div>`;

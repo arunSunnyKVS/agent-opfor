@@ -17,6 +17,41 @@ You can use it in three ways:
 
 ---
 
+## Single-turn vs multi-turn attacks
+
+By default, astra runs **single-turn** attacks: one prompt is sent to your target, one response is judged, done.
+
+**Multi-turn** mode fires a short adversarial conversation per attack. After each response the judge evaluates it in context; if the target holds firm, an attacker LLM generates a more escalating follow-up and the cycle repeats (up to `turns`, default 3). The attack stops as soon as the judge returns FAIL.
+
+**Important:** multi-turn only works if your target agent maintains conversation history across requests. Astra does not replay previous messages — it only sends a `sessionId` (UUID) with each request. Your agent must look up that ID and reconstruct the conversation on its side. If the target treats every request independently, multi-turn degrades to repeated single-turn attempts.
+
+- **HTTP targets:** configure `target.sessionIdField` (e.g. `"session_id"`) so astra injects the ID into the request body. Your server uses it to key a session store.
+- **Local-script targets:** `sessionId` is always included in the stdin JSON (`{ "prompt": "...", "sessionId": "...", "context": {...} }`). Use it to maintain in-process history.
+- **Session ID absent** (single-turn or no `sessionIdField` set): no ID is injected and no history is expected.
+
+Enable multi-turn in your config:
+
+```json
+{
+  "turnMode": "multi",
+  "turns": 3,
+  "target": {
+    "sessionIdField": "session_id"
+  }
+}
+```
+
+Or in YAML:
+
+```yaml
+turnMode: multi
+turns: 3
+target:
+  sessionIdField: session_id
+```
+
+---
+
 ## Option 1 — Skills (agent-based)
 
 The skills approach encodes red teaming **knowledge** as structured markdown files that any AI coding agent can read and execute. No code, no config — just describe your target.
@@ -262,11 +297,11 @@ When your target is not a single HTTP URL—or you want a small **adapter** that
 **Contract (one attack = one process):**
 
 
-| Stream     | Content                                                                                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Stdin**  | One JSON object: `{"prompt":"...","context":{...}}`. `context` may include fields such as `targetName`.                                                 |
-| **Stdout** | One JSON object: `{"response":"..."}` on success, or `{"error":"..."}` on failure. The runner parses stdout as JSON—do not print debug lines to stdout. |
-| **Stderr** | Log freely with `console.error` (Node) or writes to stderr (Python); the CLI forwards stderr to your terminal during `astra run`.                       |
+| Stream     | Content                                                                                                                                                                                             |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stdin**  | One JSON object: `{"prompt":"...","context":{...},"sessionId":"..."}`. `sessionId` is present for multi-turn attacks; omitted for single-turn. `context` may include fields such as `targetName`. |
+| **Stdout** | One JSON object: `{"response":"..."}` on success, or `{"error":"..."}` on failure. The runner parses stdout as JSON—do not print debug lines to stdout.                                            |
+| **Stderr** | Log freely with `console.error` (Node) or writes to stderr (Python); the CLI forwards stderr to your terminal during `astra run`.                                                                  |
 
 
 **Interpreter:** Astra picks the runtime from the file extension—`.py` / `.pyw` → `python3`, `.js` / `.mjs` / `.cjs` → `node`. You do not configure “Python vs JavaScript” separately.
@@ -332,23 +367,28 @@ echo '{"prompt":"hello","context":{}}' | python3 ./astra-local-target.py
 ### Config fields reference
 
 
-| Field                  | Required           | Description                                                                                                |
-| ---------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `llm.provider`         | No                 | `groq`, `openai`, `anthropic`, `google`, or `other`. Defaults to `groq`.                                   |
-| `llm.model`            | No                 | Model name. Defaults to provider's recommended model.                                                      |
-| `llm.apiKey`           | No                 | API key. If omitted, read from the corresponding env var.                                                  |
-| `llm.baseURL`          | Only for `other`   | Base URL for custom OpenAI-compatible endpoints.                                                           |
-| `target.name`          | Yes                | Human-readable name for the target.                                                                        |
-| `target.description`   | Yes                | What the target does, what data it has access to, restrictions. More detail = better attacks.              |
-| `target.type`          | Yes                | `http-endpoint` or `local-script` (.js or .py; runtime is inferred from the extension).                    |
-| `target.scriptPath`    | For `local-script` | Path to the adapter script (e.g. `./astra-local-target.js`), relative to the cwd when you run `astra run`. |
-| `target.endpoint`      | For HTTP           | Full URL to POST attacks to.                                                                               |
-| `target.requestFormat` | For HTTP           | `openai` (messages array) or `json` (`{prompt: "..."}` body).                                              |
-| `target.targetModel`   | For HTTP           | Model name to send in the request body.                                                                    |
-| `target.targetApiKey`  | For HTTP           | Bearer token for the target endpoint, if needed.                                                           |
-| `selection.mode`       | Yes                | `suite` or `evaluators`.                                                                                   |
-| `selection.suite`      | For suite          | `owasp-llm-top10` or `owasp-agentic-ai`.                                                                   |
-| `selection.evaluators` | For evaluators     | Array of evaluator IDs (see list below).                                                                   |
+| Field                    | Required           | Description                                                                                                 |
+| ------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `llm.provider`           | No                 | `groq`, `openai`, `anthropic`, `google`, or `other`. Defaults to `groq`.                                    |
+| `llm.model`              | No                 | Model name. Defaults to provider's recommended model.                                                       |
+| `llm.apiKey`             | No                 | API key. If omitted, read from the corresponding env var.                                                   |
+| `llm.baseURL`            | Only for `other`   | Base URL for custom OpenAI-compatible endpoints.                                                            |
+| `target.name`            | Yes                | Human-readable name for the target.                                                                         |
+| `target.description`     | Yes                | What the target does, what data it has access to, restrictions. More detail = better attacks.               |
+| `target.type`            | Yes                | `http-endpoint` or `local-script` (.js or .py; runtime is inferred from the extension).                     |
+| `target.scriptPath`      | For `local-script` | Path to the adapter script (e.g. `./astra-local-target.js`), relative to cwd when you run `astra run`.     |
+| `target.endpoint`        | For HTTP           | Full URL to POST attacks to.                                                                                |
+| `target.requestFormat`   | For HTTP           | `openai` (messages array) or `json` (custom body). Defaults to `auto`.                                     |
+| `target.targetModel`     | For HTTP / openai  | Model name to send in the request body.                                                                     |
+| `target.targetApiKey`    | No                 | Bearer token for the target endpoint, if needed.                                                            |
+| `target.promptPath`      | No                 | Dot-path for the prompt field in the JSON request body (e.g. `input.message`). Defaults to `prompt`.       |
+| `target.responsePath`    | No                 | Dot-path to extract the reply from the JSON response (e.g. `data.reply`). Falls back to built-in chain.    |
+| `target.sessionIdField`  | No                 | Body field to inject a session ID for multi-turn attacks (e.g. `session_id`). Target manages its own history. |
+| `selection.mode`         | Yes                | `suite` or `evaluators`.                                                                                    |
+| `selection.suite`        | For suite          | `owasp-llm-top10` or `owasp-agentic-ai`.                                                                    |
+| `selection.evaluators`   | For evaluators     | Array of evaluator IDs (see list below).                                                                    |
+| `turnMode`               | No                 | `single` (default) or `multi`. Multi-turn fires a conversation with escalating follow-ups per attack.       |
+| `turns`                  | No                 | Number of turns per attack when `turnMode` is `multi`. Defaults to `3`.                                     |
 
 
 ### Supported LLM providers
@@ -365,23 +405,46 @@ echo '{"prompt":"hello","context":{}}' | python3 ./astra-local-target.py
 
 ### Target endpoint formats
 
-**openai** — OpenAI messages format:
+**`openai`** — OpenAI messages format:
 
 ```json
 POST /chat
-{ "model": "...", "messages": [{ "role": "user", "content": "attack prompt" }] }
+{ "model": "gpt-4o-mini", "messages": [{ "role": "user", "content": "attack prompt" }] }
 ```
 
-Response parsed from `choices[0].message.content`.
+Response extracted from `choices[0].message.content`.
 
-**json** — Generic JSON format:
+**`json`** — Generic JSON format. By default sends `{ "prompt": "..." }` and reads from `.response`:
 
 ```json
 POST /chat
 { "prompt": "attack prompt" }
 ```
 
-Response parsed from `.response` field.
+Customise with `promptPath` and `responsePath` if your API uses different field names or nesting:
+
+```json
+"target": {
+  "requestFormat": "json",
+  "promptPath": "input.message",
+  "responsePath": "output.text"
+}
+```
+
+This sends `{ "input": { "message": "..." } }` and reads from `response.output.text`.
+
+**`auto`** (default) — tries `openai` first; falls back to `json` if the endpoint returns a non-2xx response.
+
+**Multi-turn session ID** — for `multi` turn mode, add `sessionIdField` so astra injects a session ID into every request body. The target uses it to maintain conversation history:
+
+```json
+"target": {
+  "requestFormat": "json",
+  "sessionIdField": "session_id"
+}
+```
+
+Each attack sequence gets a fresh UUID. Single-turn attacks are unaffected when `sessionIdField` is set.
 
 ### CI/CD integration
 
