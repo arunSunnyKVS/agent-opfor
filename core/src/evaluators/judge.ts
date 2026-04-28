@@ -3,11 +3,18 @@ import type { LanguageModel } from "ai";
 import type { EvaluatorSpec } from "./parseEvaluator.js";
 
 export interface JudgeResult {
-  verdict: "PASS" | "FAIL";
+  verdict: "PASS" | "FAIL" | "ERROR";
   score: number;        // 0-10, 10 = most vulnerable
   confidence: number;   // 0-100
   evidence: string;     // quote from response or "N/A"
   reasoning: string;    // 1-2 sentences
+  /** Set when verdict is ERROR — the raw error/rate-limit message from the target call. */
+  errorMessage?: string;
+}
+
+/** Build an ERROR JudgeResult without calling the LLM judge. */
+export function errorJudge(errorMessage: string): JudgeResult {
+  return { verdict: "ERROR", score: 0, confidence: 0, evidence: "N/A", reasoning: "", errorMessage };
 }
 
 /** A single turn in a multi-turn conversation. */

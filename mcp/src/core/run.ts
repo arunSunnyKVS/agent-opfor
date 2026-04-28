@@ -2,15 +2,15 @@ import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createModel } from "@astra/core/providers/factory";
-import { judgeResponse } from "@astra/core/evaluators/judge";
-import type { ConversationTurn } from "@astra/core/evaluators/judge";
+import { judgeResponse, errorJudge } from "@astra/core/evaluators/judge";
+import type { ConversationTurn, JudgeResult } from "@astra/core/evaluators/judge";
 import { generateReport } from "@astra/core/report/generateReport";
 import type { EvaluatorReport, TestResult, TurnRecord } from "@astra/core/report/generateReport";
 import type { EvaluatorSpec } from "@astra/core/evaluators/parseEvaluator";
 import type { AttackEntry, PromptsFile } from "@astra/core/config/types";
 import { resolveTelemetryEnv } from "@astra/core/config/resolveTelemetryEnv";
 import type { RunAgentConfigHttp } from "@astra/core/lib/agent";
-import { callTargetHttp, generateNextAttackTurn } from "@astra/core/lib/agent";
+import { callTargetHttp, generateNextAttackTurn, isTargetError, extractErrorMessage } from "@astra/core/lib/agent";
 import { invokeLocalTargetScript } from "@astra/core/lib/localScriptTarget";
 import { newOtelTraceId } from "@astra/core/lib/tracePropagation";
 
@@ -28,6 +28,7 @@ export interface RunSummary {
   totalAttacks: number;
   passed: number;
   failed: number;
+  errors: number;
   safetyScore: number;
   htmlReport: string;
   jsonReport: string;
@@ -129,7 +130,7 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
     for (const attack of entries) {
       const isMultiTurn = attack.turnMode === "multi";
       const numTurns = isMultiTurn ? (attack.turns ?? 3) : 1;
-      const sessionId = isMultiTurn ? randomUUID() : undefined;
+      const sessionId = (isMultiTurn || target.sessionIdField) ? randomUUID() : undefined;
 
       const agentCfg: RunAgentConfigHttp = {
         attack,
@@ -178,20 +179,25 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
         conversationHistory.push({ role: "user", content: userMessage });
         conversationHistory.push({ role: "assistant", content: response });
 
-        // Judge with full history context
-        const judge = await judgeResponse(
-          evaluatorSpec,
-          userMessage,
-          response,
-          model,
-          undefined,
-          isMultiTurn ? conversationHistory : undefined
-        );
+        // Short-circuit: skip LLM judge when the target itself failed
+        let judge: JudgeResult;
+        if (isTargetError(response)) {
+          judge = errorJudge(extractErrorMessage(response));
+        } else {
+          judge = await judgeResponse(
+            evaluatorSpec,
+            userMessage,
+            response,
+            model,
+            undefined,
+            isMultiTurn ? conversationHistory : undefined
+          );
+        }
 
         turnResults.push({ turnIndex: t, prompt: userMessage, response, judge });
 
-        // Early exit on failure
-        if (judge.verdict === "FAIL") {
+        // Early exit on failure or error
+        if (judge.verdict === "FAIL" || judge.verdict === "ERROR") {
           break;
         }
       }
@@ -242,11 +248,13 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
     judgeLabel
   );
 
-  // Build summary
+  // Build summary — errors excluded from safety score denominator
   const allResults = reports.flatMap(r => r.results);
   const passed = allResults.filter(r => r.judge.verdict === "PASS").length;
-  const failed = totalRun - passed;
-  const safetyScore = totalRun > 0 ? Math.round((passed / totalRun) * 100) : 0;
+  const errors = allResults.filter(r => r.judge.verdict === "ERROR").length;
+  const failed = totalRun - passed - errors;
+  const scoreDenominator = passed + failed;
+  const safetyScore = scoreDenominator > 0 ? Math.round((passed / scoreDenominator) * 100) : 0;
 
   const criticalFindings = reports
     .filter(r => r.evaluator.severity === "critical")
@@ -281,6 +289,7 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
     totalAttacks: totalRun,
     passed,
     failed,
+    errors,
     safetyScore,
     htmlReport: reportPaths.html,
     jsonReport: reportPaths.json,
