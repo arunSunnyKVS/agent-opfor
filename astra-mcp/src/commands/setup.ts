@@ -21,16 +21,15 @@ export function registerSetupCommand(program: Command) {
       `Path to config file (default: ./${DEFAULT_ASTRA_MCP_CONFIG})`
     )
     .option(
-      "-s, --suite <id>",
-      `Suite ID to use (default: ${DEFAULT_SUITE_ID})`,
-      DEFAULT_SUITE_ID
-    )
-    .option(
       "-o, --out <path>",
       `Output path for attack plan JSON (default: ./${DEFAULT_ATTACK_PLAN_OUT})`,
       DEFAULT_ATTACK_PLAN_OUT
     )
-    .action(async ({ config, suite: suiteId, out }: { config?: string; suite: string; out: string }) => {
+    .option(
+      "--max-tools <n>",
+      "Limit to the first N tools from tools/list (useful for rate-limited LLMs)"
+    )
+    .action(async ({ config, out, maxTools }: { config?: string; out: string; maxTools?: string }) => {
       try {
       const configPath = await requireAstraMcpConfig(config);
       log.info(`Using config: ${configPath}`);
@@ -41,9 +40,9 @@ export function registerSetupCommand(program: Command) {
       const evalIds = getEvaluatorIdSet(catalog);
       log.info(`Evaluator catalog: ${catalog.evaluators.length} definitions`);
 
-      const suite = catalog.suites.find((s) => s.id === suiteId);
+      const suite = catalog.suites.find((s) => s.id === DEFAULT_SUITE_ID);
       if (!suite) {
-        log.warn(`Suite "${suiteId}" not found (check skills/astra-setup/suites/).`);
+        log.warn(`Suite "${DEFAULT_SUITE_ID}" not found (check skills/astra-setup/suites/).`);
         return;
       }
       const missing = suite.evaluatorIds.filter((id) => !evalIds.has(id));
@@ -72,6 +71,14 @@ export function registerSetupCommand(program: Command) {
         log.success(`tools/list: ${tools.length} tool(s) (${tools.filter((t) => t.inputSchema).length} with inputSchema)`);
       } finally {
         await mcp.close();
+      }
+
+      if (maxTools) {
+        const n = parseInt(maxTools, 10);
+        if (!isNaN(n) && n > 0 && n < tools.length) {
+          tools = tools.slice(0, n);
+          log.info(`Limiting to first ${n} tools (--max-tools ${n})`);
+        }
       }
 
       const evaluatorDocs = [];

@@ -6,7 +6,7 @@ import { loadAstraMcpConfigFile } from "../lib/loadAstraMcpConfig.js";
 import { log } from "../lib/logger.js";
 import { connectMcpClient } from "../mcp/createClient.js";
 import { executeAttack } from "../run/executeAttack.js";
-import { judgeToolResponse } from "../run/judge.js";
+import { judgeToolResponse, sanitizeJudgeResult } from "../run/judge.js";
 import { loadEvaluatorCriteria } from "../catalog/loadEvaluatorCriteria.js";
 import { buildReport, enrichReportWithCriteria } from "../report/buildReport.js";
 import { writeHtmlReport } from "../report/renderHtml.js";
@@ -84,7 +84,7 @@ export function registerRunCommand(program: Command) {
             const criteria = criteriaMap.get(attack.evaluatorId);
             if (!criteria) throw new Error(`No criteria loaded for evaluator: ${attack.evaluatorId}`);
 
-            const judgeResult = await judgeToolResponse({
+            const rawJudgeResult = await judgeToolResponse({
               model: cfg.models.run,
               evaluator: criteria,
               attackSummary: attack.summary,
@@ -92,23 +92,45 @@ export function registerRunCommand(program: Command) {
               toolArguments: execResult.toolArguments,
               toolResponse: execResult.rawToolResponse,
               toolError: execResult.toolError,
+              steps: execResult.steps,
+            });
+
+            const judgeResult = sanitizeJudgeResult(rawJudgeResult, {
+              attackSummary: attack.summary,
+              toolArguments: execResult.toolArguments,
+              toolResponse: execResult.rawToolResponse,
+              toolError: execResult.toolError,
+              steps: execResult.steps,
             });
 
             runResults.push({ ...execResult, judge: judgeResult });
 
             const verdict = judgeResult.verdict === "PASS" ? "✔ PASS" : "✖ FAIL";
-            const argsPreview = JSON.stringify(execResult.toolArguments, null, 2);
-
             log.log(`  ${verdict} · score ${judgeResult.score}/10 · confidence ${judgeResult.confidence}%`);
-            log.log(`  ↑ req  ${execResult.toolName}`);
-            log.log(`         ${argsPreview}`);
 
-            if (execResult.toolError) {
-              log.log(`  ↓ err  ${execResult.toolError}`);
+            // Log each step for multi-turn, or the single call otherwise
+            if (execResult.steps && execResult.steps.length > 1) {
+              for (const step of execResult.steps) {
+                log.log(`  ↑ step ${step.stepIndex + 1}  ${step.toolName}`);
+                log.log(`         ${JSON.stringify(step.toolArguments, null, 2)}`);
+                if (step.toolError) {
+                  log.log(`  ↓ err  ${step.toolError}`);
+                } else {
+                  const { text, isError } = parseToolResponse(step.rawToolResponse);
+                  const errorTag = isError ? " [isError=true]" : "";
+                  log.log(`  ↓ res${errorTag}  ${text.slice(0, 300)}`);
+                }
+              }
             } else {
-              const { text, isError } = parseToolResponse(execResult.rawToolResponse);
-              const errorTag = isError ? " [isError=true]" : "";
-              log.log(`  ↓ res${errorTag}  ${text}`);
+              log.log(`  ↑ req  ${execResult.toolName}`);
+              log.log(`         ${JSON.stringify(execResult.toolArguments, null, 2)}`);
+              if (execResult.toolError) {
+                log.log(`  ↓ err  ${execResult.toolError}`);
+              } else {
+                const { text, isError } = parseToolResponse(execResult.rawToolResponse);
+                const errorTag = isError ? " [isError=true]" : "";
+                log.log(`  ↓ res${errorTag}  ${text.slice(0, 300)}`);
+              }
             }
 
             if (judgeResult.reasoning) log.log(`  ⚑ ${judgeResult.reasoning}`);

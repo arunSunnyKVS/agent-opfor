@@ -10,15 +10,26 @@ export const JudgeResultSchema = z.object({
 
 export type JudgeResult = z.infer<typeof JudgeResultSchema>;
 
+/** Result from a single step in a multi-turn attack chain. */
+export interface StepResult {
+  stepIndex: number;
+  toolName: string;
+  toolArguments: Record<string, unknown>;
+  rawToolResponse: string;
+  toolError?: string;
+}
+
 export interface AttackExecutionResult {
   attackId: string;
   evaluatorId: string;
   toolName: string;
   toolArguments: Record<string, unknown>;
-  /** Raw JSON-stringified result returned by the MCP tool call. */
+  /** Raw JSON-stringified result returned by the MCP tool call (last step for multi-turn). */
   rawToolResponse: string;
   /** Error message if the tool call itself threw (not a security finding). */
   toolError?: string;
+  /** All steps for multi-turn attacks (populated when attack.steps is used). */
+  steps?: StepResult[];
 }
 
 export interface AttackRunResult extends AttackExecutionResult {
