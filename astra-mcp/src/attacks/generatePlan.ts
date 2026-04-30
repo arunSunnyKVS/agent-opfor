@@ -154,7 +154,7 @@ export async function generateAttackPlan(args: {
   }
 
   // Stamp turns on all LLM-generated attacks when multi-turn mode is enabled
-  const multiTurn = args.turns && args.turns > 1;
+  const multiTurn = args.turns !== undefined && args.turns >= 2;
   const stampedAttacks = multiTurn
     ? allAttacks.map((a) => ({ ...a, turns: args.turns }))
     : allAttacks;

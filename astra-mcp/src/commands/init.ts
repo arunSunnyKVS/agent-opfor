@@ -210,6 +210,27 @@ export function registerInitCommand(program: Command) {
       const runModel = await promptModelConfig("run");
       log.success("Model settings captured.");
 
+      const turnMode = await select<"single" | "multi">({
+        message: "Attack turn mode",
+        choices: [
+          { name: "Single-turn — one shot per attack (faster, default)", value: "single" as const },
+          { name: "Multi-turn — attacker adapts based on judge feedback", value: "multi" as const },
+        ],
+      });
+
+      let turns: number | undefined;
+      if (turnMode === "multi") {
+        const turnsRaw = await input({
+          message: "Number of adaptive turns per attack (2–10)",
+          default: "3",
+          validate: (v: string) => {
+            const n = parseInt(v, 10);
+            return Number.isFinite(n) && n >= 2 && n <= 10 ? true : "Enter a number between 2 and 10";
+          },
+        });
+        turns = parseInt(turnsRaw, 10);
+      }
+
       const notes = await input({
         message: "Any notes to include in the config? (optional)",
         default: "",
@@ -222,6 +243,8 @@ export function registerInitCommand(program: Command) {
           setup: setupModel,
           run: runModel,
         },
+        turnMode,
+        ...(turns !== undefined ? { turns } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
       };
 
