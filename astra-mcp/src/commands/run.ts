@@ -141,24 +141,20 @@ export function registerRunCommand(program: Command) {
               for (let t = 1; t <= numTurns; t++) {
                 log.log(`  ── turn ${t}/${numTurns}`);
 
+                // Turn 1: use setup-phase args directly (same as single-turn).
+                // Turn 2+: attacker LLM generates new args from full history + judge feedback.
                 let overrideArgs: Record<string, unknown> | undefined;
                 if (t > 1) {
                   overrideArgs = await generateNextMcpAttackTurn(
                     turnHistory,
                     attack.summary,
                     attack.suggestedToolName ?? "",
+                    (attack.suggestedToolArguments ?? {}) as Record<string, unknown>,
                     cfg.models.run
                   );
                 }
 
                 const turnExec = await executeAttack(mcp, attack, overrideArgs);
-
-                turnHistory.push({
-                  toolName: turnExec.toolName,
-                  toolArguments: turnExec.toolArguments,
-                  rawToolResponse: turnExec.rawToolResponse,
-                  toolError: turnExec.toolError,
-                });
 
                 const isTransportFailure = Boolean(turnExec.toolError && !turnExec.rawToolResponse);
                 const judgeResult = isTransportFailure
@@ -180,6 +176,16 @@ export function registerRunCommand(program: Command) {
                         toolError: turnExec.toolError,
                       }
                     );
+
+                // Push to history with judge feedback so next turn's attacker LLM can adapt
+                turnHistory.push({
+                  toolName: turnExec.toolName,
+                  toolArguments: turnExec.toolArguments,
+                  rawToolResponse: turnExec.rawToolResponse,
+                  toolError: turnExec.toolError,
+                  judgeVerdict: judgeResult.verdict,
+                  judgeReasoning: judgeResult.reasoning || undefined,
+                });
 
                 turnResults.push({
                   turnIndex: t,
