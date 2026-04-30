@@ -256,28 +256,28 @@ export async function writeHtmlReport(report: RunReport, outputDir: string): Pro
   type Finding = { rank: number; evaluator: string; attackId: string; score: number; description: string };
   const criticalFindings: Finding[] = [];
   const highFindings: Finding[] = [];
-  let rank = 1;
   for (const e of evaluators) {
     if (e.severity === "critical") {
       for (const r of e.results) {
         if (r.judge.verdict === "FAIL") {
-          criticalFindings.push({ rank: rank++, evaluator: e.evaluatorName || e.evaluatorId, attackId: r.attackId, score: r.judge.score, description: r.judge.reasoning });
+          criticalFindings.push({ rank: 0, evaluator: e.evaluatorName || e.evaluatorId, attackId: r.attackId, score: r.judge.score, description: r.judge.reasoning });
         }
       }
     }
   }
-  rank = 1;
   for (const e of evaluators) {
     if (e.severity === "high") {
       for (const r of e.results) {
         if (r.judge.verdict === "FAIL") {
-          highFindings.push({ rank: rank++, evaluator: e.evaluatorName || e.evaluatorId, attackId: r.attackId, score: r.judge.score, description: r.judge.reasoning });
+          highFindings.push({ rank: 0, evaluator: e.evaluatorName || e.evaluatorId, attackId: r.attackId, score: r.judge.score, description: r.judge.reasoning });
         }
       }
     }
   }
   criticalFindings.sort((a, b) => b.score - a.score);
   highFindings.sort((a, b) => b.score - a.score);
+  criticalFindings.forEach((f, i) => { f.rank = i + 1; });
+  highFindings.forEach((f, i) => { f.rank = i + 1; });
 
   const findingCard = (f: Finding, color: string) => `
       <div class="finding-card" style="border-left-color:${color}">
