@@ -36,6 +36,10 @@ export const AstraMcpConfigSchema = z.object({
     setup: ModelConfigSchema,
     run: ModelConfigSchema,
   }),
+  /** "single" (default) fires one attack per scenario; "multi" runs adaptive multi-turn red-teaming. */
+  turnMode: z.enum(["single", "multi"]).optional(),
+  /** Number of adaptive turns per attack when turnMode is "multi" (default 3). */
+  turns: z.number().int().min(2).max(10).optional(),
   notes: z.string().optional(),
 });
 

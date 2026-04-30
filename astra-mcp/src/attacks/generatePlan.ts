@@ -124,6 +124,7 @@ export async function generateAttackPlan(args: {
   suiteId: string;
   tools: ToolInfo[];
   evaluatorDocs: EvaluatorDoc[];
+  turns?: number;
 }): Promise<AttackPlanWritten> {
   const transport = args.cfg.server.transport;
   const serverSummary =
@@ -151,7 +152,13 @@ export async function generateAttackPlan(args: {
     allAttacks.push(...attacks);
   }
 
-  // Inject description-scan attacks programmatically — no LLM needed
+  // Stamp turns on all LLM-generated attacks when multi-turn mode is enabled
+  const multiTurn = args.turns !== undefined && args.turns >= 2;
+  const stampedAttacks = multiTurn
+    ? allAttacks.map((a) => ({ ...a, turns: args.turns }))
+    : allAttacks;
+
+  // Inject description-scan attacks programmatically — no LLM needed, always single-turn
   const hasScanEvaluator = args.evaluatorDocs.some((d) => d.id === "tool-description-scan");
   const descriptionScanAttacks = hasScanEvaluator
     ? args.tools.map((tool) => ({
@@ -169,7 +176,7 @@ export async function generateAttackPlan(args: {
     : [];
 
   const finalAttacks = [
-    ...allAttacks.map((a) => attachReplayHints(a, args.cfg.server)),
+    ...stampedAttacks.map((a) => attachReplayHints(a, args.cfg.server)),
     ...descriptionScanAttacks.map((a) => attachReplayHints(a, args.cfg.server)),
   ];
 
