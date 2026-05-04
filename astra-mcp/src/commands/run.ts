@@ -7,6 +7,7 @@ import { executeAttack } from "../run/executeAttack.js";
 import { judgeToolResponse, sanitizeJudgeResult, errorJudge } from "../run/judge.js";
 import { generateNextMcpAttackTurn } from "../run/generateNextMcpAttackTurn.js";
 import type { ToolCallTurn } from "../run/generateNextMcpAttackTurn.js";
+
 import { loadEvaluatorCriteria } from "../catalog/loadEvaluatorCriteria.js";
 import { buildReport, enrichReportWithCriteria } from "../report/buildReport.js";
 import { writeHtmlReport } from "../report/renderHtml.js";
@@ -113,7 +114,7 @@ export function registerRunCommand(program: Command) {
                       toolArguments: execResult.toolArguments,
                       toolResponse: execResult.rawToolResponse,
                       toolError: execResult.toolError,
-                      attackerInstructions: plan.attackerInstructions,
+                      judgeHint: attack.judgeHint,
                     }),
                     {
                       attackSummary: attack.summary,
@@ -156,8 +157,9 @@ export function registerRunCommand(program: Command) {
                 // Turn 1: use setup-phase args directly (same as single-turn).
                 // Turn 2+: attacker LLM generates new args from full history + judge feedback.
                 let overrideArgs: Record<string, unknown> | undefined;
+                let turnJudgeHint: string | undefined = attack.judgeHint;
                 if (t > 1) {
-                  overrideArgs = await generateNextMcpAttackTurn(
+                  const turnResult = await generateNextMcpAttackTurn(
                     turnHistory,
                     attack.summary,
                     attack.suggestedToolName ?? "",
@@ -165,6 +167,8 @@ export function registerRunCommand(program: Command) {
                     plan.runModel,
                     plan.attackerInstructions
                   );
+                  overrideArgs = turnResult.args;
+                  turnJudgeHint = turnResult.judgeHint ?? attack.judgeHint;
                 }
 
                 const turnExec = await executeAttack(mcp, attack, overrideArgs, unauthServerUrl);
@@ -181,7 +185,7 @@ export function registerRunCommand(program: Command) {
                         toolArguments: turnExec.toolArguments,
                         toolResponse: turnExec.rawToolResponse,
                         toolError: turnExec.toolError,
-                        attackerInstructions: plan.attackerInstructions,
+                        judgeHint: turnJudgeHint,
                       }),
                       {
                         attackSummary: attack.summary,

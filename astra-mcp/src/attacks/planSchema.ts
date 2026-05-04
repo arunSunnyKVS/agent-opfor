@@ -12,6 +12,8 @@ export const AttackScenarioSchema = z.object({
   suggestedToolArguments: z.record(z.string(), z.any()).nullish().transform((v) => v ?? undefined),
   /** Number of adaptive turns. If > 1, the run loop calls the attacker LLM between turns. */
   turns: z.number().int().min(1).optional(),
+  /** Attacker-generated instruction for the judge: what FAIL looks like for this specific attack. */
+  judgeHint: z.string().nullish().transform((v) => v ?? undefined),
 });
 
 export const AttackPlanSchema = z.object({
