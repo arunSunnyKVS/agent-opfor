@@ -3,17 +3,20 @@ import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createModel } from "@astra/core/providers/factory";
-import { judgeResponse } from "@astra/core/evaluators/judge";
-import type { ConversationTurn } from "@astra/core/evaluators/judge";
+import { judgeResponse, errorJudge } from "@astra/core/evaluators/judge";
+import type { ConversationTurn, JudgeResult } from "@astra/core/evaluators/judge";
 import { generateReport } from "@astra/core/report/generateReport";
 import type { EvaluatorReport, TestResult, TurnRecord } from "@astra/core/report/generateReport";
 import type { EvaluatorSpec } from "@astra/core/evaluators/parseEvaluator";
 import type { PromptsFile, AttackEntry } from "@astra/core/config/types";
 import { resolveTelemetryEnv } from "@astra/core/config/resolveTelemetryEnv";
 import type { RunAgentConfigHttp } from "@astra/core/lib/agent";
-import { callTargetHttp, generateNextAttackTurn } from "@astra/core/lib/agent";
+import { callTargetHttp, generateNextAttackTurn, isTargetError, extractErrorMessage } from "@astra/core/lib/agent";
 import { invokeLocalTargetScript } from "@astra/core/lib/localScriptTarget";
 import { newOtelTraceId } from "@astra/core/lib/tracePropagation";
+
+// Suppress noisy AI SDK compatibility warnings
+(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS = false;
 
 export function registerRunCommand(program: Command) {
   program
@@ -152,16 +155,18 @@ export function registerRunCommand(program: Command) {
         for (const attack of entries) {
           const isMultiTurn = attack.turnMode === "multi";
           const numTurns = isMultiTurn ? (attack.turns ?? 3) : 1;
-          const sessionId = isMultiTurn ? randomUUID() : undefined;
+          // Always generate a session ID when the target declares a sessionIdField,
+          // so the field is present in every request body (not just multi-turn ones).
+          const sessionId = (isMultiTurn || target.sessionIdField) ? randomUUID() : undefined;
 
           const turnLabel = isMultiTurn ? ` (multi-turn, up to ${numTurns} turns)` : "";
           process.stdout.write(
-            `  [${testNumber}/${entries.length}] ${attack.patternName.slice(0, 55).padEnd(55)}${turnLabel}`
+            `  [${testNumber}/${entries.length}] ${attack.patternName.slice(0, 55).padEnd(55)}${turnLabel} `
           );
 
           const conversationHistory: ConversationTurn[] = [];
           const turnResults: TurnRecord[] = [];
-          let overallVerdict: "PASS" | "FAIL" = "PASS";
+          let overallVerdict: "PASS" | "FAIL" | "ERROR" = "PASS";
 
           const agentCfg: RunAgentConfigHttp = {
             attack,
@@ -211,32 +216,38 @@ export function registerRunCommand(program: Command) {
             conversationHistory.push({ role: "user", content: userMessage });
             conversationHistory.push({ role: "assistant", content: response });
 
-            // Judge with full history context
-            if (isMultiTurn) {
-              process.stdout.write(`\n     → Turn ${t}: judging...`);
+            // Short-circuit: skip LLM judge when the target itself failed
+            let judge: JudgeResult;
+            if (isTargetError(response)) {
+              judge = errorJudge(extractErrorMessage(response));
+              if (isMultiTurn) {
+                process.stdout.write(`\n     ⚠ Turn ${t}: ERROR — ${judge.errorMessage}`);
+              }
             } else {
-              process.stdout.write(`\n     → judging response...`);
+              if (isMultiTurn) {
+                process.stdout.write(`\n     → Turn ${t}: judging...`);
+              }
+              judge = await judgeResponse(
+                evaluatorSpec,
+                userMessage,
+                response,
+                model,
+                undefined,
+                isMultiTurn ? conversationHistory : undefined
+              );
             }
-
-            const judge = await judgeResponse(
-              evaluatorSpec,
-              userMessage,
-              response,
-              model,
-              undefined,
-              isMultiTurn ? conversationHistory : undefined
-            );
 
             turnResults.push({ turnIndex: t, prompt: userMessage, response, judge });
 
-            const verdictIcon = judge.verdict === "PASS" ? "✓" : "✗";
             if (isMultiTurn) {
-              process.stdout.write(` ${verdictIcon} ${judge.verdict} (score ${judge.score}/10)`);
+              const icon = judge.verdict === "PASS" ? "✓" : judge.verdict === "ERROR" ? "⚠" : "✗";
+              const suffix = judge.verdict === "ERROR" ? "" : ` (score ${judge.score}/10)`;
+              process.stdout.write(` ${icon} ${judge.verdict}${suffix}`);
             }
 
-            // Early exit on failure
-            if (judge.verdict === "FAIL") {
-              overallVerdict = "FAIL";
+            // Early exit on failure or error
+            if (judge.verdict === "FAIL" || judge.verdict === "ERROR") {
+              overallVerdict = judge.verdict;
               if (isMultiTurn) {
                 process.stdout.write(` — stopping early`);
               }
@@ -255,8 +266,12 @@ export function registerRunCommand(program: Command) {
           };
 
           if (!isMultiTurn) {
-            const verdictIcon = finalJudge.verdict === "PASS" ? "✓" : "✗";
-            console.log(` → ${verdictIcon} ${finalJudge.verdict} (score ${finalJudge.score}/10)`);
+            const icon = finalJudge.verdict === "PASS" ? "✓" : finalJudge.verdict === "ERROR" ? "⚠" : "✗";
+            const suffix = finalJudge.verdict === "ERROR"
+              ? ` ${finalJudge.errorMessage}`
+              : ` (score ${finalJudge.score}/10)`;
+            // Print verdict inline on the same line as the attack name
+            console.log(` ${icon} ${finalJudge.verdict}${suffix}`);
           } else {
             console.log(""); // newline after turn-by-turn output
           }
@@ -292,15 +307,21 @@ export function registerRunCommand(program: Command) {
         judgeLabel
       );
 
-      const passCount = reports.flatMap(r => r.results).filter(r => r.judge.verdict === "PASS").length;
-      const failCount = totalRun - passCount;
-      const score = totalRun > 0 ? Math.round((passCount / totalRun) * 100) : 0;
+      const allResults = reports.flatMap(r => r.results);
+      const passCount = allResults.filter(r => r.judge.verdict === "PASS").length;
+      const errorCount = allResults.filter(r => r.judge.verdict === "ERROR").length;
+      const failCount = totalRun - passCount - errorCount;
+      const scoreDenominator = passCount + failCount;
+      const score = scoreDenominator > 0 ? Math.round((passCount / scoreDenominator) * 100) : 0;
 
       console.log(`\nRun complete!`);
       console.log(`  Total attacks: ${totalRun}`);
       console.log(`  Passed:        ${passCount}`);
       console.log(`  Failed:        ${failCount}`);
-      console.log(`  Safety score:  ${score}%`);
+      if (errorCount > 0) {
+        console.log(`  Errors:        ${errorCount} (target unreachable/rate-limited — excluded from score)`);
+      }
+      console.log(`  Safety score:  ${scoreDenominator > 0 ? `${score}%` : "N/A"}${errorCount > 0 ? ` (${errorCount} error${errorCount !== 1 ? "s" : ""} excluded)` : ""}`);
       console.log(`\nReports:`);
       console.log(`  HTML: ${paths.html}`);
       console.log(`  JSON: ${paths.json}\n`);

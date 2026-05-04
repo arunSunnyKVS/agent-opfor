@@ -11,6 +11,19 @@ import {
   newOtelTraceId,
 } from "./tracePropagation.js";
 
+export const RATE_LIMITED_SENTINEL = "RATE_LIMITED";
+
+/** Returns true when callTargetHttp could not reach the target (network error, timeout, 429, etc.). */
+export function isTargetError(response: string): boolean {
+  return response === RATE_LIMITED_SENTINEL || response.startsWith("ERROR:");
+}
+
+/** Extracts a human-readable error message from a callTargetHttp sentinel string. */
+export function extractErrorMessage(response: string): string {
+  if (response === RATE_LIMITED_SENTINEL) return "Rate limited by target (HTTP 429)";
+  return response.slice("ERROR:".length).trim();
+}
+
 export interface AgentAttackResult {
   prompt: string;
   response: string;
