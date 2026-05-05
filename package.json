@@ -1,0 +1,48 @@
+{
+  "name": "@astra/mcp",
+  "version": "0.0.1",
+  "description": "Astra CLI — security testing for MCP servers and AI agents (astra setup|generate|run)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "src/agent/core",
+    "src/agent/mcp",
+    "src/agent/cli"
+  ],
+  "bin": {
+    "astra": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "npm run build --workspace=@astra/core && npm run build --workspace=@astra/agent-mcp-server && npm run build --workspace=astra-cli && tsc -p tsconfig.json",
+    "build:core": "npm run build --workspace=@astra/core",
+    "build:agent-mcp": "npm run build --workspace=@astra/agent-mcp-server",
+    "build:agent-cli": "npm run build --workspace=astra-cli",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.8.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "astra-cli": "*",
+    "commander": "^14.0.3",
+    "consola": "^3.4.2",
+    "dotenv": "^16.4.7",
+    "yaml": "^2.8.3",
+    "zod": "^4.1.5"
+  }
+}
