@@ -1,0 +1,38 @@
+#!/usr/bin/env node
+
+import { readFileSync } from "node:fs";
+import { config as loadDotenv } from "dotenv";
+import { Command } from "commander";
+import { registerSetupCommand } from "./commands/setup.js";
+import { registerGenerateCommand } from "./commands/generate.js";
+import { registerRunCommand } from "./commands/run.js";
+
+loadDotenv();
+
+function readVersion(): string {
+  const pkgUrl = new URL("../package.json", import.meta.url);
+  const pkg = JSON.parse(readFileSync(pkgUrl, "utf8")) as { version?: string };
+  return pkg.version ?? "0.0.0";
+}
+
+const program = new Command();
+
+program
+  .name("astra")
+  .description("Astra — security testing for MCP servers and AI agents")
+  .version(readVersion(), "-v, --version", "Print version");
+
+registerSetupCommand(program);
+registerGenerateCommand(program);
+registerRunCommand(program);
+
+main().catch((err: unknown) => {
+  const message =
+    err instanceof Error ? err.stack || err.message : String(err);
+  console.error(message);
+  process.exitCode = 1;
+});
+
+async function main(): Promise<void> {
+  await program.parseAsync(process.argv);
+}

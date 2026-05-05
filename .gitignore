@@ -21,4 +21,11 @@ cli/node_modules/
 astra.config.json
 astra-prompts-*.json
 tracedata.json
-astra-mcp.config.json
+
+# Astra artifacts
+.astra/configs/
+.astra/attacks/
+.astra/reports/
+
+# Back-compat / legacy artifacts (kept ignored)
+astra-mcp-attacks.json
