@@ -8,7 +8,8 @@
   "workspaces": [
     "core",
     "cli",
-    "mcp"
+    "mcp",
+    "extension"
   ],
   "files": [
     "skills/",
@@ -21,7 +22,7 @@
   "scripts": {
     "build": "npm run build --workspace=@astra/core && npm run build --workspace=astra && npm run build --workspace=@astra/agent-mcp-server",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "extension:catalog": "node src/extension/scripts/build-catalog.mjs"
+    "extension:catalog": "npm run build:catalog --workspace=@astra/extension"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
