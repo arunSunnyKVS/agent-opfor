@@ -133,7 +133,7 @@ async function main() {
   const payload = {
     version: 1,
     generatedAt: new Date().toISOString(),
-    source: "src/agent/skills/astra-setup",
+    source: "skills/agent-redteaming/astra-setup",
     suites,
     evaluators
   };

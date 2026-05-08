@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "generatedAt": "2026-05-08T12:29:00.113Z",
-  "source": "src/agent/skills/astra-setup",
+  "generatedAt": "2026-05-08T12:38:15.776Z",
+  "source": "skills/agent-redteaming/astra-setup",
   "suites": [
     {
       "id": "eu-ai-act-bias",
