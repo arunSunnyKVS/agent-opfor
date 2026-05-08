@@ -7,7 +7,15 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettierConfig,
   {
-    ignores: ["dist/", "node_modules/", "src/agent/*/dist/"],
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "core/dist/",
+      "cli/dist/",
+      "mcp/dist/",
+      "extension/catalog.json",
+      ".astra/",
+    ],
   },
   {
     rules: {

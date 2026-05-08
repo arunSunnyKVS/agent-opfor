@@ -17,6 +17,7 @@ node_modules/
 dist/
 temp/
 cli/node_modules/
+*.tsbuildinfo
 .astra
 astra.config.json
 astra-prompts-*.json

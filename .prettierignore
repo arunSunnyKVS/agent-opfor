@@ -1,5 +1,7 @@
 dist/
 node_modules/
-src/agent/*/dist/
+core/dist/
+cli/dist/
+mcp/dist/
 .astra/
 *.json

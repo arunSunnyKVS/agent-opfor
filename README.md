@@ -283,13 +283,13 @@ For non-interactive use, run `astra setup` once locally to produce the config fi
 
 ## Full CLI reference
 
-See [`src/agent/docs/cli.md`](src/agent/docs/cli.md) for the complete commands and config fields reference.
+See [`docs/cli.md`](docs/cli.md) for the complete commands and config fields reference.
 
 ## Contributing
 
 Highest-impact contributions:
 
-1. **New evaluators** — add a markdown file to `src/agent/skills/astra-setup/evaluators/` (agent) or `skills/astra-setup/evaluators/` (MCP) with attack templates, pass/fail criteria, and a CVE or paper citation.
+1. **New evaluators** — add a markdown file to `skills/agent-redteaming/astra-setup/evaluators/` (agent redteaming) or `skills/mcp-redteaming/evaluators/` (MCP redteaming) with attack templates, pass/fail criteria, and a CVE or paper citation.
 2. **Target adapters** — add support for new agent frameworks or transports.
 3. **Findings** — run astra against a public agent or MCP server and open a PR to `findings/` with a writeup.
 
