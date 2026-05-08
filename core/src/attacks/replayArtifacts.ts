@@ -10,11 +10,7 @@ export function jsonRpcLine(method: string, params: unknown, id: number): string
   return JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n";
 }
 
-export function buildToolsListCurl(
-  url: string,
-  headers: Record<string, string>,
-  id = 1
-): string {
+export function buildToolsListCurl(url: string, headers: Record<string, string>, id = 1): string {
   const body = { jsonrpc: "2.0", id, method: "tools/list", params: {} };
   const hdrParts = Object.entries(headers).map(([k, v]) => `-H ${shellQuote(`${k}: ${v}`)}`);
   const hdr = hdrParts.length ? `${hdrParts.join(" ")} ` : "";
@@ -47,14 +43,13 @@ export function attachReplayHints(
   attack: AttackScenario,
   server: AstraMcpConfig["server"]
 ): AttackScenarioWithReplay {
-  let idCounter = 1;
-  const toolsListLine = jsonRpcLine("tools/list", {}, idCounter++);
+  const toolsListLine = jsonRpcLine("tools/list", {}, 1);
   const toolsCallLine =
     attack.suggestedToolName !== undefined
       ? jsonRpcLine(
           "tools/call",
           { name: attack.suggestedToolName, arguments: attack.suggestedToolArguments ?? {} },
-          idCounter++
+          2
         )
       : undefined;
 

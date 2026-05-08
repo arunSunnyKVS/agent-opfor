@@ -62,7 +62,6 @@ async function promptModelConfig(label: string) {
           message: `Base URL for OpenAI-compatible provider (e.g. https://api.your-host.com/v1)`,
           validate: (v: string) => {
             try {
-              // eslint-disable-next-line no-new
               new URL(v);
               return true;
             } catch {
@@ -167,7 +166,6 @@ export async function collectMcpSectionInteractive() {
             default: "http://localhost:3000/mcp",
             validate: (v: string) => {
               try {
-                // eslint-disable-next-line no-new
                 new URL(v);
                 return true;
               } catch {
@@ -257,11 +255,10 @@ export async function collectMcpSectionInteractive() {
   const sectionParsed = McpScannerSectionSchema.safeParse(mcpSection);
   if (!sectionParsed.success) {
     log.error("Config validation failed (this is a bug).");
-    for (const issue of sectionParsed.error.issues) log.error(`${issue.path.join(".")}: ${issue.message}`);
+    for (const issue of sectionParsed.error.issues)
+      log.error(`${issue.path.join(".")}: ${issue.message}`);
     throw new Error("MCP config validation failed");
   }
 
   return sectionParsed.data;
 }
-
-
