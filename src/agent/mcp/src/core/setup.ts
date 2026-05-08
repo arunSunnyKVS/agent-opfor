@@ -25,7 +25,6 @@ import type {
 
 export interface SetupOptions {
   configPath: string;
-  apiKey?: string;
   outputDir?: string;
 }
 
@@ -44,7 +43,7 @@ export interface SetupResult {
 }
 
 export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
-  const { configPath, apiKey: apiKeyOverride, outputDir = "." } = opts;
+  const { configPath, outputDir = "." } = opts;
 
   const raw = await readFile(path.resolve(configPath), "utf8");
   const ext = path.extname(configPath).toLowerCase();
@@ -68,39 +67,21 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
     selectedEvaluatorIds = cfg.selection.evaluators;
   }
 
-  // Resolve attack LLM: argument > config file > env var
   const provider: ProviderName = (cfg.attackLlm?.provider as ProviderName) ?? "groq";
-  const envVar = PROVIDER_ENV_VARS[provider];
-  const apiKey = apiKeyOverride?.trim() || cfg.attackLlm?.apiKey?.trim() || process.env[envVar] || "";
-  if (!apiKey) {
-    throw new Error(
-      `No API key for provider "${provider}". ` +
-      `Pass apiKey in the tool call, set attackLlm.apiKey in the config, or set env var ${envVar}.`
-    );
-  }
-
   const attackLlm: LlmConfig = {
     provider,
     model: cfg.attackLlm?.model ?? PROVIDER_DEFAULTS[provider],
-    apiKey,
+    apiKeyEnv: cfg.attackLlm?.apiKeyEnv ?? PROVIDER_ENV_VARS[provider],
     baseURL: cfg.attackLlm?.baseURL,
   };
 
   let judgeLlm: LlmConfig | undefined;
   if (cfg.judgeLlm) {
     const judgeProvider: ProviderName = (cfg.judgeLlm.provider as ProviderName) ?? provider;
-    const judgeEnvVar = PROVIDER_ENV_VARS[judgeProvider];
-    const judgeApiKey = cfg.judgeLlm.apiKey?.trim() || process.env[judgeEnvVar] || "";
-    if (!judgeApiKey) {
-      throw new Error(
-        `No API key for judgeLlm provider "${judgeProvider}". ` +
-        `Set judgeLlm.apiKey in the config or export ${judgeEnvVar}.`
-      );
-    }
     judgeLlm = {
       provider: judgeProvider,
       model: cfg.judgeLlm.model ?? PROVIDER_DEFAULTS[judgeProvider],
-      apiKey: judgeApiKey,
+      apiKeyEnv: cfg.judgeLlm.apiKeyEnv ?? PROVIDER_ENV_VARS[judgeProvider],
       baseURL: cfg.judgeLlm.baseURL,
     };
   }
@@ -149,37 +130,20 @@ export async function runSetupInline(
   }
 
   const provider: ProviderName = (inline.attackLlm?.provider as ProviderName) ?? "groq";
-  const envVar = PROVIDER_ENV_VARS[provider];
-  const apiKey = inline.attackLlm?.apiKey?.trim() || process.env[envVar] || "";
-  if (!apiKey) {
-    throw new Error(
-      `No API key for provider "${provider}". ` +
-      `Pass attackLlm.apiKey in the tool call or set env var ${envVar}.`
-    );
-  }
-
   const attackLlm: LlmConfig = {
     provider,
     model: inline.attackLlm?.model ?? PROVIDER_DEFAULTS[provider],
-    apiKey,
+    apiKeyEnv: inline.attackLlm?.apiKeyEnv ?? PROVIDER_ENV_VARS[provider],
     baseURL: inline.attackLlm?.baseURL,
   };
 
   let judgeLlm: LlmConfig | undefined;
   if (inline.judgeLlm) {
     const judgeProvider: ProviderName = (inline.judgeLlm.provider as ProviderName) ?? provider;
-    const judgeEnvVar = PROVIDER_ENV_VARS[judgeProvider];
-    const judgeApiKey = inline.judgeLlm.apiKey?.trim() || process.env[judgeEnvVar] || "";
-    if (!judgeApiKey) {
-      throw new Error(
-        `No API key for judgeLlm provider "${judgeProvider}". ` +
-        `Pass judgeLlm.apiKey in the tool call or set env var ${judgeEnvVar}.`
-      );
-    }
     judgeLlm = {
       provider: judgeProvider,
       model: inline.judgeLlm.model ?? PROVIDER_DEFAULTS[judgeProvider],
-      apiKey: judgeApiKey,
+      apiKeyEnv: inline.judgeLlm.apiKeyEnv ?? PROVIDER_ENV_VARS[judgeProvider],
       baseURL: inline.judgeLlm.baseURL,
     };
   }

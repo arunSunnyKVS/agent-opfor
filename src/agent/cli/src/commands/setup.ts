@@ -141,26 +141,14 @@ async function collectLlmConfig(label: string): Promise<LlmConfig> {
     });
   }
 
-  // API key — offer to reuse from env var if already set
-  const envVar = PROVIDER_ENV_VARS[provider];
-  const existingKey = process.env[envVar];
-  let apiKey: string;
+  const defaultEnvVar = PROVIDER_ENV_VARS[provider];
+  const apiKeyEnv = await input({
+    message: "Env var name for API key:",
+    default: defaultEnvVar,
+    validate: (v) => v.trim() !== "" || "Env var name is required",
+  });
 
-  if (existingKey) {
-    const useEnv = await confirm({
-      message: `Found ${envVar} in environment. Use it?`,
-      default: true,
-    });
-    apiKey = useEnv ? existingKey : await password({ message: "API key:", mask: "*" });
-  } else {
-    apiKey = await password({
-      message: `API key (or set ${envVar} env var):`,
-      mask: "*",
-      validate: (v) => v.trim() !== "" || "API key is required",
-    });
-  }
-
-  return { provider, model, apiKey, baseURL };
+  return { provider, model, apiKeyEnv: apiKeyEnv.trim(), baseURL };
 }
 
 async function runInteractiveWizard(
@@ -337,8 +325,7 @@ function extractAgentSetupPayload(parsed: unknown): SetupConfigFile {
 
 async function loadConfigFile(
   configPath: string,
-  catalog: Awaited<ReturnType<typeof loadSkillCatalog>>,
-  apiKeyOverride?: string
+  catalog: Awaited<ReturnType<typeof loadSkillCatalog>>
 ): Promise<CollectedAnswers> {
   const { suites: SUITES } = catalog;
   const EVALUATOR_IDS = getEvaluatorIdSet(catalog);
@@ -360,40 +347,21 @@ async function loadConfigFile(
     selectedEvaluatorIds = cfg.selection.evaluators;
   }
 
-  // Resolve attack LLM — --api-key flag > config file > env var
   const provider: ProviderName = (cfg.attackLlm?.provider as ProviderName) ?? "groq";
-  const envVar = PROVIDER_ENV_VARS[provider];
-  const apiKey = apiKeyOverride?.trim() || cfg.attackLlm?.apiKey?.trim() || process.env[envVar] || "";
-  if (!apiKey) {
-    throw new Error(
-      `No API key found for provider "${provider}". ` +
-      `Pass --api-key, set attackLlm.apiKey in the config file, or export ${envVar}.`
-    );
-  }
-
   const attackLlm: LlmConfig = {
     provider,
     model: cfg.attackLlm?.model ?? PROVIDER_DEFAULTS[provider],
-    apiKey,
+    apiKeyEnv: cfg.attackLlm?.apiKeyEnv ?? PROVIDER_ENV_VARS[provider],
     baseURL: cfg.attackLlm?.baseURL,
   };
 
   let judgeLlm: LlmConfig | undefined;
   if (cfg.judgeLlm) {
     const judgeProvider: ProviderName = (cfg.judgeLlm.provider as ProviderName) ?? provider;
-    const judgeEnvVar = PROVIDER_ENV_VARS[judgeProvider];
-    const judgeApiKey =
-      cfg.judgeLlm.apiKey?.trim() || process.env[judgeEnvVar] || "";
-    if (!judgeApiKey) {
-      throw new Error(
-        `No API key found for judgeLlm provider "${judgeProvider}". ` +
-        `Set judgeLlm.apiKey in the config file, or export ${judgeEnvVar}.`
-      );
-    }
     judgeLlm = {
       provider: judgeProvider,
       model: cfg.judgeLlm.model ?? PROVIDER_DEFAULTS[judgeProvider],
-      apiKey: judgeApiKey,
+      apiKeyEnv: cfg.judgeLlm.apiKeyEnv ?? PROVIDER_ENV_VARS[judgeProvider],
       baseURL: cfg.judgeLlm.baseURL,
     };
   }
@@ -423,7 +391,6 @@ export function registerSetupCommand(program: Command) {
     )
     .option("--config <path>", "Path to a JSON or YAML setup config file (skips interactive prompts)")
     .option("--output-dir <path>", "Directory to write the prompts JSON file", ".")
-    .option("--api-key <key>", "LLM API key (overrides config file and environment variable)")
     .action(async (opts) => {
       let answers: CollectedAnswers;
       try {
@@ -431,12 +398,11 @@ export function registerSetupCommand(program: Command) {
         if (opts.config) {
           const resolvedPath = path.resolve(opts.config);
           console.log(`\nLoading config from: ${resolvedPath}`);
-          answers = await loadConfigFile(opts.config, catalog, opts.apiKey);
+          answers = await loadConfigFile(opts.config, catalog);
           logTelemetryFromConfig(answers.telemetry);
           console.log(`Starting setup (attack prompt generation)…`);
         } else {
           answers = await runInteractiveWizard(catalog);
-          if (opts.apiKey) answers.attackLlm.apiKey = opts.apiKey;
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -596,11 +562,10 @@ export function registerSetupCommand(program: Command) {
 export async function generateAgentAttacksFromConfig(opts: {
   configPath: string;
   outputPath: string;
-  apiKeyOverride?: string;
   configId?: string;
 }): Promise<string> {
   const catalog = await loadSkillCatalog();
-  const answers = await loadConfigFile(opts.configPath, catalog, opts.apiKeyOverride);
+  const answers = await loadConfigFile(opts.configPath, catalog);
 
   const { attackLlm, judgeLlm, target, selectedEvaluatorIds, telemetry, turnMode, turns } = answers;
   const model = createModel(attackLlm);

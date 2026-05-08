@@ -1,7 +1,7 @@
 import { input, select, confirm } from "@inquirer/prompts";
 import type { SetupConfigFile, ProviderName, TargetConfig } from "@astra/core/config/types";
 import { PROVIDER_CHOICES } from "@astra/core/config/types";
-import { PROVIDER_DEFAULTS } from "@astra/core/providers/factory";
+import { PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "@astra/core/providers/factory";
 import { loadSkillCatalog } from "@astra/core/config/loadSkillCatalog";
 
 export function buildEmptyAgentSetupConfig(): SetupConfigFile {
@@ -9,7 +9,7 @@ export function buildEmptyAgentSetupConfig(): SetupConfigFile {
     attackLlm: {
       provider: "openai",
       model: "gpt-4o-mini",
-      apiKey: "",
+      apiKeyEnv: "OPENAI_API_KEY",
     },
     target: {
       name: "My AI Agent",
@@ -126,7 +126,7 @@ export async function collectAgentSetupConfigInteractive(): Promise<SetupConfigF
     default: false,
   });
 
-  let judgeLlm: { provider: ProviderName; model: string; apiKey: string } | undefined;
+  let judgeLlm: { provider: ProviderName; model: string; apiKeyEnv: string } | undefined;
   if (useSeperateJudge) {
     const judgeProvider = await select<ProviderName>({
       message: "LLM provider for judging:",
@@ -137,7 +137,7 @@ export async function collectAgentSetupConfigInteractive(): Promise<SetupConfigF
       default: PROVIDER_DEFAULTS[judgeProvider] || undefined,
       validate: (v) => (v.trim() ? true : "Model is required"),
     });
-    judgeLlm = { provider: judgeProvider, model: judgeModel.trim(), apiKey: "" };
+    judgeLlm = { provider: judgeProvider, model: judgeModel.trim(), apiKeyEnv: PROVIDER_ENV_VARS[judgeProvider] };
   }
 
   const addTelemetry = await confirm({
@@ -146,7 +146,7 @@ export async function collectAgentSetupConfigInteractive(): Promise<SetupConfigF
   });
 
   return {
-    attackLlm: { provider, model: model.trim(), apiKey: "" },
+    attackLlm: { provider, model: model.trim(), apiKeyEnv: PROVIDER_ENV_VARS[provider] },
     ...(judgeLlm ? { judgeLlm } : {}),
     target,
     selection: { mode: "suite", suite: suiteId },

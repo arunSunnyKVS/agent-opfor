@@ -23,7 +23,6 @@ export async function runAgentAttacksFromFile(opts: {
   targetScript?: string;
   outputDir?: string;
   concurrency?: string;
-  apiKey?: string;
 }): Promise<{ html: string; json: string }> {
   let promptsFile: PromptsFile;
   const inputPath = path.resolve(opts.input);
@@ -37,10 +36,7 @@ export async function runAgentAttacksFromFile(opts: {
   }
 
   const { target, attacks } = promptsFile;
-  const attackLlm = {
-    ...promptsFile.attackLlm,
-    ...(opts.apiKey ? { apiKey: opts.apiKey as string } : {}),
-  };
+  const attackLlm = promptsFile.attackLlm;
   const judgeLlm = promptsFile.judgeLlm ?? attackLlm;
 
   if (!attacks || attacks.length === 0) {
@@ -241,7 +237,6 @@ export function registerRunCommand(program: Command) {
     )
     .option("--output-dir <path>", "Directory to write HTML/JSON reports", ".astra/reports")
     .option("--concurrency <n>", "Max parallel attacks (default 1 — sequential)", "1")
-    .option("--api-key <key>", "LLM API key (overrides the key stored in the prompts file)")
     .action(async (opts) => {
       try {
         const paths = await runAgentAttacksFromFile({
@@ -249,7 +244,6 @@ export function registerRunCommand(program: Command) {
           targetScript: opts.targetScript,
           outputDir: opts.outputDir,
           concurrency: opts.concurrency,
-          apiKey: opts.apiKey,
         });
         console.log(`\nReports:`);
         console.log(`  HTML: ${paths.html}`);

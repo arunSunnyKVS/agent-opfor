@@ -285,7 +285,7 @@ export const PROVIDER_CHOICES: { name: string; value: ProviderName }[] = [
 export interface LlmConfigInput {
   provider?: ProviderName;
   model?: string;
-  apiKey?: string;
+  apiKeyEnv?: string;
   baseURL?: string;
 }
 
@@ -293,8 +293,8 @@ export interface LlmConfigInput {
 export interface LlmConfig {
   provider: ProviderName;
   model: string;
-  apiKey: string;   // stored in prompts file — warn user to gitignore
-  baseURL?: string; // only for "other"
+  apiKeyEnv: string; // env var name, resolved at runtime
+  baseURL?: string;  // only for "other"
 }
 
 export interface TargetConfig {

@@ -16,7 +16,6 @@ import { newOtelTraceId } from "@astra/core/lib/tracePropagation";
 
 export interface RunOptions {
   inputPath: string;
-  apiKey?: string;
   outputDir?: string;
   /** If set, run attacks against this script (stdin JSON, stdout JSON response). */
   targetScript?: string;
@@ -49,7 +48,7 @@ export interface RunSummary {
 }
 
 export async function runScan(opts: RunOptions): Promise<RunSummary> {
-  const { inputPath, apiKey: apiKeyOverride, outputDir = ".astra/reports", targetScript: targetScriptOpt } = opts;
+  const { inputPath, outputDir = ".astra/reports", targetScript: targetScriptOpt } = opts;
 
   const raw = await readFile(path.resolve(inputPath), "utf8");
   const promptsFile = JSON.parse(raw) as PromptsFile;
@@ -81,10 +80,7 @@ export async function runScan(opts: RunOptions): Promise<RunSummary> {
     );
   }
 
-  const attackLlm = {
-    ...promptsFile.attackLlm,
-    ...(apiKeyOverride?.trim() ? { apiKey: apiKeyOverride.trim() } : {}),
-  };
+  const attackLlm = promptsFile.attackLlm;
   const judgeLlm = promptsFile.judgeLlm ?? attackLlm;
 
   const model = createModel(attackLlm);
