@@ -84,8 +84,6 @@ server.tool(
 // When both are supplied, inline parameters take precedence.
 // ---------------------------------------------------------------------------
 
-// Large Zod shape + MCP SDK: TS2589 excessive instantiation at compile time only.
-// @ts-expect-error TS2589
 server.tool(
   "astra_setup",
   "Generate targeted red-team attack prompts for an AI application. " +
