@@ -4,16 +4,16 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { input, select, checkbox, password, confirm } from "@inquirer/prompts";
 import { parse as parseYaml } from "yaml";
-import { loadBuiltinEvaluator } from "@astra/core/evaluators/parseEvaluator";
-import { generateAttackPrompts } from "@astra/core/evaluators/generatePrompts";
-import { createModel, PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "@astra/core/providers/factory";
+import { loadBuiltinEvaluator } from "../../../../core/dist/evaluators/parseEvaluator.js";
+import { generateAttackPrompts } from "../../../../core/dist/evaluators/generatePrompts.js";
+import { createModel, PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "../../../../core/dist/providers/factory.js";
 import {
   loadSkillCatalog,
   resolveSuiteEvaluatorIds,
   getEvaluatorIdSet,
-} from "@astra/core/config/loadSkillCatalog";
-import { resolveTelemetryEnv } from "@astra/core/config/resolveTelemetryEnv";
-import { runSetupTraceCuration } from "@astra/core/telemetry/curation";
+} from "../../../../core/dist/config/loadSkillCatalog.js";
+import { resolveTelemetryEnv } from "../../../../core/dist/config/resolveTelemetryEnv.js";
+import { runSetupTraceCuration } from "../../../../core/dist/telemetry/curation.js";
 import type {
   PromptsFile,
   AttackEntry,
@@ -22,8 +22,8 @@ import type {
   LlmConfig,
   ProviderName,
   TelemetryConfig,
-} from "@astra/core/config/types";
-import { PROVIDER_CHOICES } from "@astra/core/config/types";
+} from "../../../../core/dist/config/types.js";
+import { PROVIDER_CHOICES } from "../../../../core/dist/config/types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

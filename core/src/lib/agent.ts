@@ -256,7 +256,6 @@ export async function runAttackAgent(cfg: RunAgentConfig): Promise<AgentAttackRe
 
   const tools = {
     // `ai` `tool()` + Zod can hit TS2589 (deep generic instantiation); runtime types are correct.
-    // @ts-expect-error TS2589
     callEndpoint: tool({
       description: "Send the attack prompt to the target endpoint and return its response text.",
       inputSchema: callEndpointInputSchema,

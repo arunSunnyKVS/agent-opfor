@@ -1,13 +1,13 @@
 import path from "node:path";
 import { Command } from "commander";
-import { generateAttackPlan } from "@astra/core/attacks/generatePlan";
-import { loadCatalog, getEvaluatorIdSet } from "@astra/core/catalog/loadCatalog";
-import { loadEvaluatorDoc } from "@astra/core/catalog/loadEvaluatorPatterns";
-import { DEFAULT_ASTRA_CONFIG, requireAstraMcpConfig } from "@astra/core/lib/astraConfig";
-import { loadAstraMcpConfigFile } from "@astra/core/lib/loadAstraMcpConfig";
-import { writeJsonFile } from "@astra/core/lib/jsonFile";
-import { log } from "@astra/core/lib/logger";
-import { connectMcpClient } from "@astra/core/mcp-client/createClient";
+import { generateAttackPlan } from "../../../../core/dist/attacks/generatePlan.js";
+import { loadCatalog, getEvaluatorIdSet } from "../../../../core/dist/catalog/loadCatalog.js";
+import { loadEvaluatorDoc } from "../../../../core/dist/catalog/loadEvaluatorPatterns.js";
+import { DEFAULT_ASTRA_CONFIG, requireAstraMcpConfig } from "../../../../core/dist/lib/astraConfig.js";
+import { loadAstraMcpConfigFile } from "../../../../core/dist/lib/loadAstraMcpConfig.js";
+import { writeJsonFile } from "../../../../core/dist/lib/jsonFile.js";
+import { log } from "../../../../core/dist/lib/logger.js";
+import { connectMcpClient } from "../../../../core/dist/mcp-client/createClient.js";
 
 const DEFAULT_SUITE_ID = "owasp-mcp-top10";
 const DEFAULT_ATTACK_PLAN_OUT = "astra-mcp-attacks.json";

@@ -6,7 +6,6 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "core",
     "cli",
     "mcp",
     "extension"
@@ -20,8 +19,8 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "npm run build --workspace=@astra/core && npm run build --workspace=astra && npm run build --workspace=@astra/agent-mcp-server",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "tsc -b core cli mcp && npm run extension:catalog",
+    "typecheck": "tsc -b core cli mcp",
     "extension:catalog": "npm run build:catalog --workspace=@astra/extension"
   },
   "devDependencies": {

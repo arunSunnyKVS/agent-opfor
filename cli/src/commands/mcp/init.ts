@@ -1,6 +1,6 @@
 import { confirm, input, select } from "@inquirer/prompts";
-import { McpScannerSectionSchema, type ProviderName } from "@astra/core/config/schema";
-import { log } from "@astra/core/lib/logger";
+import { McpScannerSectionSchema, type ProviderName } from "../../../../core/dist/config/schema.js";
+import { log } from "../../../../core/dist/lib/logger.js";
 
 function defaultApiKeyEnv(provider: ProviderName): string {
   switch (provider) {

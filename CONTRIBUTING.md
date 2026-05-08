@@ -131,10 +131,7 @@ patterns:
 
 ```bash
 # 1. Start the echo test server
-node scripts/fixtures/echo-mcp-server.mjs
-
-# 2. Run generate against it using the fixture config
-astra generate --config scripts/fixtures/local-echo-mcp.config.json
+# (fixture removed — use any local MCP server you have)
 
 # 3. Inspect the generated attack plan — your evaluator should appear
 # 4. Run the attacks and check the report
@@ -173,7 +170,7 @@ When adding a new transport:
 - Implement the same interface as `createClient.ts` — expose a `connectMcpClient()` function that returns `{ client, close }`.
 - Add a new discriminated union branch to `McpServerConfigSchema` in `src/mcp/config/schema.ts`.
 - Update the `init.ts` setup wizard to offer the new transport as an option.
-- Add a fixture config in `scripts/fixtures/` so others can test it.
+- Add a fixture config so others can test it.
 
 ---
 

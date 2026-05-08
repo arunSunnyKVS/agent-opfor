@@ -1,8 +1,8 @@
 import { input, select, confirm } from "@inquirer/prompts";
-import type { SetupConfigFile, ProviderName, TargetConfig } from "@astra/core/config/types";
-import { PROVIDER_CHOICES } from "@astra/core/config/types";
-import { PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "@astra/core/providers/factory";
-import { loadSkillCatalog } from "@astra/core/config/loadSkillCatalog";
+import type { SetupConfigFile, ProviderName, TargetConfig } from "../../../../core/dist/config/types.js";
+import { PROVIDER_CHOICES } from "../../../../core/dist/config/types.js";
+import { PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "../../../../core/dist/providers/factory.js";
+import { loadSkillCatalog } from "../../../../core/dist/config/loadSkillCatalog.js";
 
 export function buildEmptyAgentSetupConfig(): SetupConfigFile {
   return {

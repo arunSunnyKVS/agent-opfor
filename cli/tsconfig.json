@@ -1,4 +1,5 @@
 {
+  "references": [{ "path": "../core" }],
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
@@ -6,6 +7,7 @@
     "moduleResolution": "NodeNext",
     "outDir": "dist",
     "rootDir": "src",
+    "composite": true,
     "declaration": true,
     "strict": true,
     "skipLibCheck": true,

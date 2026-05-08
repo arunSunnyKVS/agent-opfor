@@ -1,18 +1,18 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
-import { log } from "@astra/core/lib/logger";
-import { connectMcpClient } from "@astra/core/mcp-client/createClient";
-import { executeAttack } from "@astra/core/run/executeAttack";
-import { judgeToolResponse, sanitizeJudgeResult, errorJudge } from "@astra/core/run/judge";
-import { generateNextMcpAttackTurn } from "@astra/core/run/generateNextMcpAttackTurn";
-import type { ToolCallTurn } from "@astra/core/run/generateNextMcpAttackTurn";
+import { log } from "../../../../core/dist/lib/logger.js";
+import { connectMcpClient } from "../../../../core/dist/mcp-client/createClient.js";
+import { executeAttack } from "../../../../core/dist/run/executeAttack.js";
+import { judgeToolResponse, sanitizeJudgeResult, errorJudge } from "../../../../core/dist/run/judge.js";
+import { generateNextMcpAttackTurn } from "../../../../core/dist/run/generateNextMcpAttackTurn.js";
+import type { ToolCallTurn } from "../../../../core/dist/run/generateNextMcpAttackTurn.js";
 
-import { loadEvaluatorCriteria } from "@astra/core/catalog/loadEvaluatorCriteria";
-import { buildReport, enrichReportWithCriteria } from "@astra/core/report/buildReport";
-import { writeHtmlReport } from "@astra/core/report/renderHtml";
-import type { AttackPlanWritten } from "@astra/core/attacks/planSchema";
-import type { AttackRunResult, TurnRecord } from "@astra/core/run/types";
+import { loadEvaluatorCriteria } from "../../../../core/dist/catalog/loadEvaluatorCriteria.js";
+import { buildReport, enrichReportWithCriteria } from "../../../../core/dist/report/buildReport.js";
+import { writeHtmlReport } from "../../../../core/dist/report/renderHtml.js";
+import type { AttackPlanWritten } from "../../../../core/dist/attacks/planSchema.js";
+import type { AttackRunResult, TurnRecord } from "../../../../core/dist/run/types.js";
 
 interface ParsedToolResponse {
   text: string;

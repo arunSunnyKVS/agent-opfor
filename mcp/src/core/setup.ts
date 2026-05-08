@@ -2,16 +2,16 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { parse as parseYaml } from "yaml";
-import { loadBuiltinEvaluator } from "@astra/core/evaluators/parseEvaluator";
-import { generateAttackPrompts } from "@astra/core/evaluators/generatePrompts";
-import { createModel, PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "@astra/core/providers/factory";
+import { loadBuiltinEvaluator } from "../../../core/dist/evaluators/parseEvaluator.js";
+import { generateAttackPrompts } from "../../../core/dist/evaluators/generatePrompts.js";
+import { createModel, PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "../../../core/dist/providers/factory.js";
 import {
   loadSkillCatalog,
   resolveSuiteEvaluatorIds,
   getEvaluatorIdSet,
-} from "@astra/core/config/loadSkillCatalog";
-import { resolveTelemetryEnv } from "@astra/core/config/resolveTelemetryEnv";
-import { runLangfuseSetupTraceCuration } from "@astra/core/telemetry/langfuseTraceCuration";
+} from "../../../core/dist/config/loadSkillCatalog.js";
+import { resolveTelemetryEnv } from "../../../core/dist/config/resolveTelemetryEnv.js";
+import { runLangfuseSetupTraceCuration } from "../../../core/dist/telemetry/langfuseTraceCuration.js";
 import type {
   AttackEntry,
   InlineSetupConfig,
@@ -21,7 +21,7 @@ import type {
   SetupConfigFile,
   TargetConfig,
   TelemetryConfig,
-} from "@astra/core/config/types";
+} from "../../../core/dist/config/types.js";
 
 export interface SetupOptions {
   configPath: string;

@@ -1,18 +1,18 @@
 import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { createModel } from "@astra/core/providers/factory";
-import { judgeResponse, errorJudge } from "@astra/core/evaluators/judge";
-import type { ConversationTurn, JudgeResult } from "@astra/core/evaluators/judge";
-import { generateReport } from "@astra/core/report/generateReport";
-import type { EvaluatorReport, TestResult, TurnRecord } from "@astra/core/report/generateReport";
-import type { EvaluatorSpec } from "@astra/core/evaluators/parseEvaluator";
-import type { AttackEntry, PromptsFile } from "@astra/core/config/types";
-import { resolveTelemetryEnv } from "@astra/core/config/resolveTelemetryEnv";
-import type { RunAgentConfigHttp } from "@astra/core/lib/agent";
-import { callTargetHttp, generateNextAttackTurn, isTargetError, extractErrorMessage } from "@astra/core/lib/agent";
-import { invokeLocalTargetScript } from "@astra/core/lib/localScriptTarget";
-import { newOtelTraceId } from "@astra/core/lib/tracePropagation";
+import { createModel } from "../../../core/dist/providers/factory.js";
+import { judgeResponse, errorJudge } from "../../../core/dist/evaluators/judge.js";
+import type { ConversationTurn, JudgeResult } from "../../../core/dist/evaluators/judge.js";
+import { generateReport } from "../../../core/dist/report/generateReport.js";
+import type { EvaluatorReport, TestResult, TurnRecord } from "../../../core/dist/report/generateReport.js";
+import type { EvaluatorSpec } from "../../../core/dist/evaluators/parseEvaluator.js";
+import type { AttackEntry, PromptsFile } from "../../../core/dist/config/types.js";
+import { resolveTelemetryEnv } from "../../../core/dist/config/resolveTelemetryEnv.js";
+import type { RunAgentConfigHttp } from "../../../core/dist/lib/agent.js";
+import { callTargetHttp, generateNextAttackTurn, isTargetError, extractErrorMessage } from "../../../core/dist/lib/agent.js";
+import { invokeLocalTargetScript } from "../../../core/dist/lib/localScriptTarget.js";
+import { newOtelTraceId } from "../../../core/dist/lib/tracePropagation.js";
 
 export interface RunOptions {
   inputPath: string;
