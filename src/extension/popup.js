@@ -1022,6 +1022,29 @@ async function requestStop() {
   try {
     await chrome.runtime.sendMessage({ type: "ASTRA_UI_STOP" });
   } catch {}
+
+  // If the service worker saved a partial result, surface it on the Done screen.
+  try {
+    const { astraLastResult } = await chrome.storage.local.get("astraLastResult");
+    if (astraLastResult?.partial) {
+      const cur = state.queue[state.evIdx];
+      state.results.push({
+        id: cur?.id || "partial",
+        name: cur?.name || "Partial result",
+        sev: cur?.sev || "low",
+        verdict: "FAIL",
+        summary: "Stopped by user (partial result saved).",
+        raw: astraLastResult
+      });
+      state.evIdx = Math.min(state.evIdx + 1, state.queue.length);
+      renderDone();
+      setScreen("done");
+      stopCosmeticTicker();
+      state.running = false;
+      return;
+    }
+  } catch {}
+
   try {
     await chrome.runtime.sendMessage({ type: "ASTRA_UI_DISCARD_PAUSED" });
   } catch {}
@@ -1161,11 +1184,8 @@ function wire() {
     }
   );
 
-  // Closing the popup mid-run aborts the in-flight run; the service
-  // worker persists a paused-run record we'll see on next open.
-  window.addEventListener("pagehide", () => {
-    chrome.runtime.sendMessage({ type: "ASTRA_UI_STOP" }).catch(() => {});
-  });
+  // NOTE: We intentionally do NOT stop the background run on popup close.
+  // The service worker can continue running; the popup can be reopened to Stop or view status.
 }
 
 // ── Init ───────────────────────────────────────────────────────

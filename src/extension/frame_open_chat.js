@@ -81,7 +81,8 @@ function findLikelyChatLauncherButtons() {
       if (blob.includes("live chat")) s += 10;
       if (blob.includes("chat now") || blob.includes("message us")) s += 9;
       if (blob.includes("need help")) s += 7;
-      if (blob.includes("contact us") || blob.includes("contact")) s += 5;
+      // "Contact us" is frequently a navigation CTA, not a chat launcher.
+      if (blob.includes("contact us") || blob.includes("contact")) s -= 6;
       if (blob.includes("virtual assistant") || blob.includes("ask us")) s += 8;
       if (blob.includes("chat")) s += 5;
       if (blob.includes("help")) s += 2;
@@ -180,6 +181,17 @@ function findFloatingWidgetCandidates() {
 }
 
 (() => {
+  // Singtel: if the Ask Shirley widget iframe is already present, do NOT click anything.
+  // Clicking other “support/contact” CTAs can navigate away and break the run.
+  try {
+    const shirleyFrame =
+      document.querySelector("iframe#ChatWindow[src*='shirley-prod.singtel.com']") ||
+      document.querySelector("iframe[src*='shirley-prod.singtel.com']");
+    if (shirleyFrame) {
+      return { ok: true, clicked: false, reason: "shirley_iframe_present" };
+    }
+  } catch {}
+
   const launchers = findLikelyChatLauncherButtons();
   const floaters = findFloatingWidgetCandidates();
 
