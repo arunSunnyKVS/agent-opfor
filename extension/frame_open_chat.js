@@ -24,7 +24,10 @@ function selectorFromEl(el) {
   return el.tagName.toLowerCase();
 }
 
-/** Links to AOL product/checkout pages — clicking these navigates away instead of opening chat. */
+/**
+ * True when the anchor points to a product, pricing, checkout, or subscription page.
+ * These navigate away instead of opening a chat widget.
+ */
 function isProductOrSignupNavLink(el) {
   if (!(el instanceof HTMLAnchorElement)) return false;
   const raw = el.getAttribute("href") || "";
@@ -32,13 +35,11 @@ function isProductOrSignupNavLink(el) {
   try {
     const u = new URL(raw, location.href);
     const p = u.pathname.toLowerCase();
-    const h = u.hostname.toLowerCase();
-    if (h.includes("aol.com") && p.includes("/products/")) return true;
-    if (p.includes("live-support-plus") || p.includes("live_support_plus")) return true;
-    if (p.includes("/products/") && (p.includes("tech-support") || p.includes("bundle")))
+    if (/\/(products?|pricing|checkout|shop|buy|order|subscribe|upgrade|plans?)\//.test(p))
       return true;
+    if (/support-plus|support_plus|tech-support-bundle|live-support/.test(p)) return true;
   } catch {
-    if (/\/products\/|live-support-plus/i.test(raw)) return true;
+    if (/\/products?\//i.test(raw)) return true;
   }
   return false;
 }
@@ -139,7 +140,7 @@ function isProbablyFloatingWidget(el) {
       return true;
   }
 
-  // Fixed bubble hugging bottom edge (some AOL / legacy widgets)
+  // Fixed bubble hugging bottom edge (legacy / embedded widgets)
   if (
     pos === "fixed" &&
     rect.bottom >= window.innerHeight - 140 &&
@@ -216,14 +217,20 @@ function findFloatingWidgetCandidates() {
 }
 
 (() => {
-  // Singtel: if the Ask Shirley widget iframe is already present, do NOT click anything.
-  // Clicking other “support/contact” CTAs can navigate away and break the run.
+  // If a visible chat composer or dedicated chat iframe already exists, widget is open — skip.
   try {
-    const shirleyFrame =
-      document.querySelector("iframe#ChatWindow[src*='shirley-prod.singtel.com']") ||
-      document.querySelector("iframe[src*='shirley-prod.singtel.com']");
-    if (shirleyFrame) {
-      return { ok: true, clicked: false, reason: "shirley_iframe_present" };
+    const existingComposer = document.querySelector(
+      "textarea[class*='chat' i], [class*='chat-input' i], [class*='composer' i], [class*='message-input' i]"
+    );
+    if (existingComposer && isVisible(existingComposer)) {
+      return { ok: true, clicked: false, reason: "chat_already_open" };
+    }
+    const chatIframes = Array.from(document.querySelectorAll("iframe")).filter((fr) => {
+      const src = (fr.getAttribute("src") || "").toLowerCase();
+      return isVisible(fr) && /chat|livechat|helpchat|chatbot|helpdesk|messenger|support-chat/.test(src);
+    });
+    if (chatIframes.length) {
+      return { ok: true, clicked: false, reason: "chat_iframe_already_present" };
     }
   } catch {}
 
@@ -231,7 +238,7 @@ function findFloatingWidgetCandidates() {
   const floaters = findFloatingWidgetCandidates();
 
   const candidates = [];
-  // Floaters first: bottom-right chat bubble is usually the real widget; launchers often duplicate "Live support" promos that are `<a href=/products/...>`.
+  // Floaters first: bottom-right chat bubble is usually the real widget launcher.
   for (const el of floaters)
     candidates.push({ kind: "floating", el, s: scoreFloatingWidget(el) + 120 });
   for (const el of launchers) candidates.push({ kind: "launcher", el, s: 100 });
@@ -240,7 +247,6 @@ function findFloatingWidgetCandidates() {
 
   const best = candidates.sort((a, b) => b.s - a.s)[0];
   try {
-    // Some sites ignore programmatic .click() for overlays; use both.
     try {
       best.el.click();
     } catch {}

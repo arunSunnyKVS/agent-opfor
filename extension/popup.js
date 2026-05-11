@@ -9,8 +9,10 @@ const MODELS = [
   "gpt-4o-mini",
   "gpt-4o",
   "gpt-4.1",
-  "claude-opus-4-7",
-  "claude-sonnet-4-6",
+  "gpt-5",
+  "claude-opus-4-5",
+  "claude-sonnet-4-5",
+  "claude-3-7-sonnet-latest",
   "claude-haiku-4-5",
   "llama-3.1-70b",
   "llama-3.3-70b-versatile",
@@ -334,9 +336,17 @@ async function loadCatalog() {
     meta: `${s.evaluatorIds.length} evals`,
   }));
   suiteDD.setOptions(opts);
-  const first = state.catalog.suites[0]?.id || "";
-  suiteDD.setValue(first);
-  setSuite(first);
+  const defaultSuite = state.catalog.suites.find((s) => s.id === "owasp-llm-top10")?.id
+    || state.catalog.suites[0]?.id || "";
+  suiteDD.setValue(defaultSuite);
+  setSuite(defaultSuite);
+
+  // For OWASP LLM Top 10, default to only "prompt-injection" selected.
+  if (defaultSuite === "owasp-llm-top10") {
+    state.selectedEvaluators = new Set(["prompt-injection"]);
+    renderEvaluatorList();
+    updateRunButton();
+  }
 }
 
 // ── Paused-run banner sync ─────────────────────────────────────
@@ -1113,6 +1123,10 @@ async function startRun({ resume = false } = {}) {
   setScreen("running");
   renderRunningHeader();
   renderRunStrip();
+  startRunStatusPoller();
+
+  // Persist the multi-evaluator queue so the popup can recover on reopen.
+  await persistPopupRunQueue();
 
   while (state.evIdx < state.queue.length) {
     if (state.cancelRequested) break;
@@ -1125,9 +1139,9 @@ async function startRun({ resume = false } = {}) {
     resume = false; // only resume the first evaluator on a resume
 
     if (state.pauseRequested || out.paused) {
-      // Stay on running queue; switch to paused screen
       state.running = false;
       stopCosmeticTicker();
+      await clearPopupRunQueue();
       $("pausedSuite").textContent = state.suiteId;
       $("pausedEvaluator").textContent = ev.name;
       $("pausedModel").textContent = state.model;
@@ -1151,10 +1165,25 @@ async function startRun({ resume = false } = {}) {
     }
     state.evIdx++;
     renderRunStrip();
+    await persistPopupRunQueue();
+
+    // Between evaluators: reset the chat session so the next evaluator
+    // starts with a fresh conversation (click "end chat" / "new chat").
+    if (state.evIdx < state.queue.length && !state.cancelRequested && !state.pauseRequested) {
+      setPhase("locating");
+      $("runEvalName").textContent = "Resetting chat session";
+      $("runPhaseText").textContent = "Starting fresh conversation for next evaluator";
+      try {
+        await chrome.runtime.sendMessage({ type: "ASTRA_RESET_CHAT" });
+      } catch {}
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
 
   state.running = false;
   stopCosmeticTicker();
+  stopRunStatusPoller();
+  await clearPopupRunQueue();
 
   if (state.cancelRequested) {
     state.queue = [];
@@ -1171,6 +1200,8 @@ async function startRun({ resume = false } = {}) {
 async function requestPause() {
   if (!state.running) return;
   state.pauseRequested = true;
+  stopRunStatusPoller();
+  await clearPopupRunQueue();
   try {
     await chrome.runtime.sendMessage({ type: "ASTRA_UI_STOP" });
   } catch {}
@@ -1179,6 +1210,8 @@ async function requestPause() {
 async function requestStop() {
   state.cancelRequested = true;
   state.pauseRequested = false;
+  stopRunStatusPoller();
+  await clearPopupRunQueue();
   try {
     await chrome.runtime.sendMessage({ type: "ASTRA_UI_STOP" });
   } catch {}
@@ -1363,6 +1396,187 @@ function wire() {
   });
 }
 
+// ── Popup multi-evaluator queue persistence ─────────────────────
+// The popup drives the multi-evaluator loop but the service worker
+// clears astraRunStatus between evaluators. We persist the popup's
+// own queue state so reopening the popup mid-run shows progress.
+async function persistPopupRunQueue() {
+  try {
+    await chrome.storage.local.set({
+      astraPopupRun: {
+        running: true,
+        suiteId: state.suiteId,
+        queue: state.queue,
+        evIdx: state.evIdx,
+        results: state.results,
+        maxTurns: state.maxTurns,
+        updatedAt: Date.now(),
+      },
+    });
+  } catch {}
+}
+
+async function clearPopupRunQueue() {
+  try {
+    await chrome.storage.local.remove("astraPopupRun");
+  } catch {}
+}
+
+// ── Live-run recovery from storage ──────────────────────────────
+// When the popup opens while a run is in progress, restore the running
+// screen and replay the persisted transcript so the user sees what's
+// happening without losing context.
+async function checkActiveRun() {
+  // First check if the service worker reports an active evaluator.
+  const { astraRunStatus } = await chrome.storage.local.get("astraRunStatus");
+
+  // Also check the popup's own multi-evaluator queue (survives between evaluators
+  // when the service worker has already cleared astraRunStatus).
+  const { astraPopupRun } = await chrome.storage.local.get("astraPopupRun");
+  const popupQueueActive = astraPopupRun?.running && Date.now() - (astraPopupRun.updatedAt || 0) < 5 * 60 * 1000;
+
+  if (!astraRunStatus?.running && !popupQueueActive) return false;
+
+  if (popupQueueActive) {
+    state.suiteId = astraPopupRun.suiteId || state.suiteId;
+    state.maxTurns = astraPopupRun.maxTurns || state.maxTurns;
+    state.queue = Array.isArray(astraPopupRun.queue) ? astraPopupRun.queue : [];
+    state.evIdx = astraPopupRun.evIdx || 0;
+    state.results = Array.isArray(astraPopupRun.results) ? astraPopupRun.results : [];
+  }
+
+  if (astraRunStatus?.running) {
+    const evId = astraRunStatus.evaluatorId || "";
+    const evName = astraRunStatus.evaluatorName || evId || "evaluator";
+    const sev = normalizeSev(astraRunStatus.severity);
+
+    if (!popupQueueActive) {
+      state.suiteId = astraRunStatus.suiteId || state.suiteId;
+      state.maxTurns = astraRunStatus.maxRounds || state.maxTurns;
+      state.queue = [{ id: evId, name: evName, sev }];
+      state.evIdx = 0;
+      state.results = [];
+    }
+  }
+
+  state.running = true;
+  state.cancelRequested = false;
+  state.pauseRequested = false;
+
+  setScreen("running");
+  renderRunningHeader();
+  renderRunStrip();
+
+  // Restore current phase.
+  const phase = astraRunStatus?.phase || "running";
+  setPhase(phase);
+
+  // Replay persisted transcript into bubbles.
+  const transcript = Array.isArray(astraRunStatus?.transcript) ? astraRunStatus.transcript : [];
+  if (transcript.length) {
+    let lastUser = "";
+    let lastAssistant = "";
+    let lastRound = 0;
+    for (let i = 0; i < transcript.length; i++) {
+      const t = transcript[i];
+      if (t.role === "user") {
+        lastUser = t.content;
+        lastRound = Math.floor(i / 2) + 1;
+        lastAssistant = "";
+      } else if (t.role === "assistant") {
+        lastAssistant = t.content;
+      }
+    }
+    latestTurn = { round: lastRound, user: lastUser, assistant: lastAssistant };
+    renderBubbles();
+    setTurnProgress(lastRound);
+  }
+
+  startRunStatusPoller();
+  return true;
+}
+
+let runStatusPollInterval = null;
+function startRunStatusPoller() {
+  stopRunStatusPoller();
+  runStatusPollInterval = setInterval(async () => {
+    if (state.screen !== "running") {
+      stopRunStatusPoller();
+      return;
+    }
+    try {
+      const { astraRunStatus } = await chrome.storage.local.get("astraRunStatus");
+      if (!astraRunStatus) return;
+
+      // The service worker clears running=false after each evaluator finishes.
+      // If the popup's own startRun loop is still active (state.running === true),
+      // it means more evaluators are queued — don't jump to idle/done.
+      if (!astraRunStatus.running) {
+        if (state.running) return;
+        stopRunStatusPoller();
+        stopCosmeticTicker();
+        const hasPaused = await checkPausedRun();
+        if (!hasPaused) {
+          const { astraLastResult } = await chrome.storage.local.get("astraLastResult");
+          if (astraLastResult && !astraLastResult.partial) {
+            const verdict =
+              String(astraLastResult.judgment?.verdict || "FAIL").toUpperCase() === "PASS"
+                ? "PASS"
+                : "FAIL";
+            state.results = [
+              {
+                id: astraLastResult.evaluatorId || state.queue[0]?.id || "",
+                name: astraLastResult.evaluatorName || state.queue[0]?.name || "",
+                sev: state.queue[0]?.sev || "low",
+                verdict,
+                summary: astraLastResult.judgment?.summary || "",
+                raw: astraLastResult,
+              },
+            ];
+            state.evIdx = 1;
+            renderDone();
+            setScreen("done");
+          } else {
+            setScreen("idle");
+          }
+        }
+        return;
+      }
+
+      // Update phase.
+      if (astraRunStatus.phase) setPhase(astraRunStatus.phase);
+
+      // Update transcript bubbles from storage.
+      const transcript = Array.isArray(astraRunStatus.transcript) ? astraRunStatus.transcript : [];
+      if (transcript.length) {
+        let lastUser = "";
+        let lastAssistant = "";
+        let lastRound = 0;
+        for (let i = 0; i < transcript.length; i++) {
+          const t = transcript[i];
+          if (t.role === "user") {
+            lastUser = t.content;
+            lastRound = Math.floor(i / 2) + 1;
+            lastAssistant = "";
+          } else if (t.role === "assistant") {
+            lastAssistant = t.content;
+          }
+        }
+        if (lastRound !== latestTurn.round || lastUser !== latestTurn.user || lastAssistant !== latestTurn.assistant) {
+          latestTurn = { round: lastRound, user: lastUser, assistant: lastAssistant };
+          renderBubbles();
+          setTurnProgress(lastRound);
+        }
+      }
+    } catch {}
+  }, 1500);
+}
+
+function stopRunStatusPoller() {
+  if (runStatusPollInterval) clearInterval(runStatusPollInterval);
+  runStatusPollInterval = null;
+}
+
 // ── Init ───────────────────────────────────────────────────────
 async function init() {
   wire();
@@ -1391,9 +1605,12 @@ async function init() {
     $("suiteDescription").textContent = e instanceof Error ? e.message : String(e);
   }
 
-  // Default to idle, then upgrade to paused if a previous session left a paused run.
-  setScreen("idle");
-  await checkPausedRun();
+  // Priority: active run > paused run > idle.
+  const isActive = await checkActiveRun();
+  if (!isActive) {
+    setScreen("idle");
+    await checkPausedRun();
+  }
 }
 
 init();

@@ -83,16 +83,36 @@ function deepPathSelector(el) {
 function isEmbeddedChatComposer(el) {
   if (!(el instanceof Element)) return false;
   const cls = (el.className || "").toString().toLowerCase();
-  if (cls.includes("chatbot__input") || cls.includes("composer") || cls.includes("chat-input"))
+  if (cls.includes("composer") || cls.includes("chat-input") || cls.includes("message-input"))
     return true;
-  if (el.closest?.("#ais-chatbot, .chatbot__form, .chatbot__window, [class*='chatbot__']"))
+  if (
+    el.closest?.(
+      "[class*='chat-window' i], [class*='chat__window' i], [class*='conversation' i], " +
+        "[class*='chat-widget' i], [id*='chatbot' i], [id*='chat-widget' i]"
+    )
+  )
     return true;
+  return false;
+}
+
+/** True when el is inside a fixed/sticky container anchored to the lower half of the viewport. */
+function isInFloatingContainer(el) {
+  let p = el instanceof Element ? el.parentElement : null;
+  for (let i = 0; i < 8 && p instanceof Element; i++, p = p.parentElement) {
+    try {
+      const st = window.getComputedStyle(p);
+      if (st.position === "fixed" || st.position === "sticky") {
+        const rect = p.getBoundingClientRect();
+        if (rect && rect.bottom > window.innerHeight * 0.35) return true;
+      }
+    } catch {}
+  }
   return false;
 }
 
 function looksLikeSiteSearch(el) {
   if (!(el instanceof Element)) return false;
-  // Never treat embedded vendor chat composers (AOL ais-chatbot, etc.) as site search.
+  // Never treat embedded chat composers as site search.
   if (isEmbeddedChatComposer(el)) return false;
 
   const type = (el.getAttribute("type") || "").toLowerCase();
@@ -148,14 +168,18 @@ function scoreInput(el) {
 
   if (!isVisible(el)) score -= 5;
 
-  // AOL / embedded assistants: textarea.chatbot__input in form.chatbot__form (often in iframe)
-  if (cls.includes("chatbot__input")) score += 35;
-  if (el.closest?.("form.chatbot__form, .chatbot__form")) score += 28;
-  if (el.closest?.("#ais-chatbot, .chatbot__window")) score += 22;
-  if (cls.includes("chatbot__") && tag === "textarea") score += 15;
-
-  // Help-center site search (AOL, etc.) — never prefer over chat composer
+  // Help-center site search — never prefer over a chat composer
   if (looksLikeSiteSearch(el)) score -= 40;
+
+  // Generic chat-composer context signals
+  if (cls.includes("composer") || cls.includes("chat-input") || cls.includes("message-input"))
+    score += 20;
+  if (isInFloatingContainer(el)) score += 12;
+  const chatAncestor = el.closest?.(
+    "[class*='chat' i], [class*='conversation' i], [class*='messenger' i], [class*='widget' i], " +
+      "[id*='chat' i], [id*='bot' i], [id*='assistant' i], [id*='widget' i]"
+  );
+  if (chatAncestor && !looksLikeSiteSearch(el)) score += 10;
 
   if (tag === "textarea") score += 5;
   if (tag === "input" && (type === "text" || type === "")) score += 3;
@@ -216,12 +240,26 @@ function scoreChatSignals() {
     score += 1;
   }
 
-  // Embedded widgets (AOL ais-chatbot, etc.): dialogue is often ul.chatbot__dialogue, NOT role=log
-  if (queryAllDeep('[class*="chatbot__dialogue"]').length) score += 18;
-  if (queryAllDeep("textarea.chatbot__input, .chatbot__input").length) score += 22;
-  if (queryAllDeep("form.chatbot__form").length) score += 14;
-  if (document.querySelector("#ais-chatbot")) score += 16;
-  if (queryAllDeep('[class*="chatbot__message"]').length) score += 10;
+  // Generic chat container patterns — visible elements only (prevents false positives from hidden widgets)
+  const visibleChatContainers = queryAllDeep(
+    "[class*='chat-window' i], [class*='conversation' i], [class*='message-list' i], " +
+      "[class*='transcript' i], [class*='chatlog' i], [id*='chatbot' i], [id*='chat-widget' i]"
+  ).filter((el) => el instanceof Element && isVisible(el));
+  score += Math.min(20, visibleChatContainers.length * 4);
+
+  // Visible chat input signals (composers, not site search)
+  const visibleChatInputs = queryAllDeep(
+    "textarea[placeholder*='message' i], textarea[aria-label*='message' i], " +
+      "[class*='chat-input' i], [class*='composer' i], [class*='message-input' i]"
+  ).filter((el) => el instanceof Element && isVisible(el));
+  score += Math.min(20, visibleChatInputs.length * 8);
+
+  // Bot / assistant message bubbles
+  const visibleBotBubbles = queryAllDeep(
+    "[class*='bot-message' i], [class*='assistant-message' i], [class*='from-bot' i], " +
+      "[data-message-author-role='assistant'], [data-from='agent'], [data-from='bot']"
+  ).filter((el) => el instanceof Element && isVisible(el));
+  score += Math.min(15, visibleBotBubbles.length * 5);
 
   // Common chat semantics
   const ariaChatBoxes = Array.from(queryAllDeep("[aria-label]"))
@@ -252,14 +290,20 @@ function collectSanitizedDomSnapshot() {
     (el) => el instanceof Element && isVisible(el)
   );
   const embeddedChatNotes = [];
-  if (queryAllDeep('[class*="chatbot__dialogue"]').length) {
+  const visibleTranscripts = queryAllDeep(
+    "[class*='conversation' i], [class*='message-list' i], [class*='transcript' i], [class*='chatlog' i]"
+  ).filter((el) => el instanceof Element && isVisible(el));
+  if (visibleTranscripts.length) {
     embeddedChatNotes.push(
-      '- pattern=embedded_chatbot transcript="ul.chatbot__dialogue or similar — this IS the chat UI (not site search)'
+      "- pattern=chat_transcript visible — this IS the chat UI (not site search); pick input near this container"
     );
   }
-  if (queryAllDeep("textarea.chatbot__input, form.chatbot__form").length) {
+  const visibleComposers = queryAllDeep(
+    "textarea[placeholder*='message' i], [class*='chat-input' i], [class*='composer' i], [class*='message-input' i]"
+  ).filter((el) => el instanceof Element && isVisible(el));
+  if (visibleComposers.length) {
     embeddedChatNotes.push(
-      "- composer=textarea.chatbot__input inside form.chatbot__form; pair send with button.chatbot__send if present"
+      "- chat composer input is visible; look for an adjacent send/submit button to pair with it"
     );
   }
   if (chatLogs.length || embeddedChatNotes.length) {

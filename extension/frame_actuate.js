@@ -98,6 +98,9 @@ function setInputValue(el, value) {
     const desc = Object.getOwnPropertyDescriptor(proto, "value");
     if (desc?.set) desc.set.call(el, value);
     else el.value = value;
+    // React tracks the value via an internal property; override it so React's
+    // change detection sees the update. The native setter above handles this
+    // for most React versions, but dispatch multiple event types to be safe.
     try {
       el.dispatchEvent(
         new InputEvent("input", {
@@ -111,21 +114,62 @@ function setInputValue(el, value) {
       el.dispatchEvent(new Event("input", { bubbles: true }));
     }
     el.dispatchEvent(new Event("change", { bubbles: true }));
+    // Some frameworks also listen for keyup to finalize state.
+    try { el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified" })); } catch {}
     return { kind: el.tagName.toLowerCase() };
   }
 
   if (el.isContentEditable) {
+    // Clear existing content and select all so execCommand replaces it.
+    el.focus?.();
+    el.textContent = "";
     try {
-      el.dispatchEvent(
-        new InputEvent("beforeinput", {
-          bubbles: true,
-          composed: true,
-          data: value,
-          inputType: "insertText",
-        })
-      );
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
     } catch {}
-    el.textContent = value;
+
+    // execCommand('insertText') is the most framework-compatible way to set
+    // text in contenteditable — React, Vue, Angular all pick it up correctly.
+    let inserted = false;
+    try {
+      inserted = document.execCommand("insertText", false, value);
+    } catch {}
+
+    // Fallback: use a clipboard-style DataTransfer InputEvent (works in Chromium).
+    if (!inserted || getInputText(el).length < value.length * 0.8) {
+      el.textContent = "";
+      try {
+        const dt = new DataTransfer();
+        dt.setData("text/plain", value);
+        el.dispatchEvent(
+          new InputEvent("beforeinput", {
+            bubbles: true,
+            composed: true,
+            data: value,
+            inputType: "insertFromPaste",
+            dataTransfer: dt,
+          })
+        );
+      } catch {}
+      el.textContent = value;
+      try {
+        el.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            composed: true,
+            data: value,
+            inputType: "insertText",
+          })
+        );
+      } catch {
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }
+
+    // Move cursor to end.
     try {
       const range = document.createRange();
       range.selectNodeContents(el);
@@ -134,18 +178,7 @@ function setInputValue(el, value) {
       sel?.removeAllRanges();
       sel?.addRange(range);
     } catch {}
-    try {
-      el.dispatchEvent(
-        new InputEvent("input", {
-          bubbles: true,
-          composed: true,
-          data: value,
-          inputType: "insertText",
-        })
-      );
-    } catch {
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-    }
+
     return { kind: "contenteditable" };
   }
 
@@ -235,6 +268,56 @@ function findGlobalSendButton() {
   return null;
 }
 
+/**
+ * Detect if the input is showing a length validation error AFTER submit attempts
+ * have already failed. Only checks strong signals to avoid false positives.
+ */
+function detectLengthError(inputEl) {
+  const currentLen = getInputText(inputEl).length;
+  if (!currentLen) return null;
+
+  // Hard signal: maxlength attribute exceeded
+  const maxLen = inputEl.getAttribute?.("maxlength");
+  if (maxLen && currentLen > Number(maxLen)) {
+    return { error: "message_too_long", maxLength: Number(maxLen), currentLength: currentLen };
+  }
+
+  // Look for visible error text explicitly about length in the nearest container
+  const parent = inputEl.closest?.("form") || inputEl.parentElement;
+  if (parent) {
+    const errorEls = parent.querySelectorAll(
+      "[class*='error' i], [class*='invalid' i], [class*='limit' i], [role='alert']"
+    );
+    for (const el of errorEls) {
+      if (!el.offsetParent && el.offsetWidth === 0) continue;
+      const text = (el.textContent || "").trim().toLowerCase();
+      if (
+        text.includes("too long") ||
+        text.includes("too many char") ||
+        text.includes("character limit") ||
+        text.includes("max length") ||
+        text.includes("exceeds")
+      ) {
+        const limitMatch = text.match(/(\d+)\s*\/\s*(\d+)/) || text.match(/(?:max|limit|maximum)\D*(\d+)/i);
+        const maxLength = limitMatch ? Number(limitMatch[2] || limitMatch[1]) : undefined;
+        return { error: "message_too_long", maxLength, hint: text.slice(0, 120), currentLength: currentLen };
+      }
+      // Counter pattern like "523/500" where first > second means over limit
+      const counter = text.match(/(\d+)\s*\/\s*(\d+)/);
+      if (counter && Number(counter[1]) > Number(counter[2])) {
+        return { error: "message_too_long", maxLength: Number(counter[2]), currentLength: currentLen, hint: text.slice(0, 120) };
+      }
+    }
+  }
+
+  // Check aria-invalid BUT only if text is long enough that it's plausibly a length issue
+  if (currentLen > 150 && inputEl.getAttribute?.("aria-invalid") === "true") {
+    return { error: "message_too_long", hint: "aria-invalid", currentLength: currentLen };
+  }
+
+  return null;
+}
+
 async function submitWithRetries({ inputEl, desiredMethod, buttonEl, originalText }) {
   const attempts = [];
 
@@ -273,6 +356,20 @@ async function submitWithRetries({ inputEl, desiredMethod, buttonEl, originalTex
     }
     await sleep(200);
   }
+
+  // All submit attempts failed — now check if the reason is a length validation error.
+  const lengthErr = detectLengthError(inputEl);
+  if (lengthErr) {
+    return {
+      ok: false,
+      error: "message_too_long",
+      maxLength: lengthErr.maxLength,
+      currentLength: lengthErr.currentLength,
+      hint: lengthErr.hint,
+      attempts,
+    };
+  }
+
   return { ok: false, attempts };
 }
 
@@ -298,13 +395,30 @@ async function submitWithRetries({ inputEl, desiredMethod, buttonEl, originalTex
         : null;
 
     return (async () => {
+      // Give framework time to process the input events before submitting.
+      await sleep(250);
+
+      // Verify text was fully set; if truncated, re-attempt with the fallback path.
+      const currentText = getInputText(input);
+      if (currentText.length < injectedText.length * 0.8 && injectedText.length > 20) {
+        setInputValue(input, injectedText);
+        await sleep(250);
+      }
+
       const res = await submitWithRetries({
         inputEl: input,
         desiredMethod: method,
         buttonEl: btn instanceof Element ? btn : null,
         originalText: injectedText,
       });
-      return { ok: res.ok, inputKind: kind, attempts: res.attempts };
+      const result = { ok: res.ok, inputKind: kind, attempts: res.attempts };
+      if (res.error === "message_too_long") {
+        result.error = "message_too_long";
+        result.maxLength = res.maxLength;
+        result.currentLength = res.currentLength;
+        result.hint = res.hint;
+      }
+      return result;
     })();
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

@@ -258,7 +258,6 @@ Astra connects to your MCP server, calls `tools/list`, generates tool-specific a
 | `owasp-api`           | OWASP API Security Top 10 | bola, bfla, sql-injection, …                                                                                 |
 | `eu-ai-act-bias`      | EU AI Act — Bias          | bias-age, bias-gender, bias-race, bias-disability                                                            |
 | `output-trust-safety` | Output trust & safety     | hallucination, misinformation, improper-output-handling, …                                                   |
-| `custom-ag1`          | Agentic AI (custom)       | ag1-grounding-poisoning, …                                                                                   |
 
 ### OWASP MCP Top 10 — evaluator mapping
 

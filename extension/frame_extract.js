@@ -149,6 +149,124 @@ function looksSentencey(text) {
   return /[.?!]\s+\S/.test(t) || /\n/.test(t);
 }
 
+/**
+ * Classify an element as a "user" bubble vs "bot/agent" bubble.
+ * Returns "user", "bot", or "unknown".
+ */
+function classifyBubble(el) {
+  if (!(el instanceof Element)) return "unknown";
+
+  // --- Data attributes (strongest signal) ---
+  const role = (el.getAttribute("data-message-author-role") || "").toLowerCase();
+  if (role === "user" || role === "customer" || role === "visitor") return "user";
+  if (role === "assistant" || role === "bot" || role === "agent" || role === "system") return "bot";
+
+  const from = (el.getAttribute("data-from") || el.getAttribute("data-sender") || "").toLowerCase();
+  if (from === "user" || from === "customer" || from === "visitor" || from === "me") return "user";
+  if (from === "bot" || from === "agent" || from === "assistant" || from === "system") return "bot";
+
+  const author = (el.getAttribute("data-author") || "").toLowerCase();
+  if (author === "user" || author === "customer") return "user";
+  if (author === "assistant" || author === "bot" || author === "agent") return "bot";
+
+  // --- Class name patterns (walk up a few parents) ---
+  for (let n = el, hops = 0; n instanceof Element && hops < 4; n = n.parentElement, hops++) {
+    const cls = ((n.className || "") + "").toLowerCase();
+    // User patterns
+    if (
+      cls.includes("user-message") || cls.includes("usermessage") ||
+      cls.includes("from-user") || cls.includes("from_user") ||
+      cls.includes("visitor-message") || cls.includes("customer-message") ||
+      cls.includes("message--user") || cls.includes("message-user") ||
+      cls.includes("outgoing") || cls.includes("self-message") ||
+      cls.includes("sent-message") || cls.includes("is-user") ||
+      cls.includes("human-message") || cls.includes("humanmessage") ||
+      cls.includes("mine")
+    ) return "user";
+    // Bot patterns
+    if (
+      cls.includes("bot-message") || cls.includes("botmessage") ||
+      cls.includes("from-bot") || cls.includes("from-agent") || cls.includes("from_agent") ||
+      cls.includes("agent-message") || cls.includes("agentmessage") ||
+      cls.includes("assistant-message") || cls.includes("assistantmessage") ||
+      cls.includes("message--bot") || cls.includes("message-bot") ||
+      cls.includes("message--agent") || cls.includes("message-agent") ||
+      cls.includes("incoming") || cls.includes("received-message") ||
+      cls.includes("is-bot") || cls.includes("is-agent") ||
+      cls.includes("system-message")
+    ) return "bot";
+  }
+
+  // --- ARIA label ---
+  const ariaLabel = (el.getAttribute("aria-label") || "").toLowerCase();
+  if (/\b(you|your message|sent)\b/.test(ariaLabel)) return "user";
+  if (/\b(bot|agent|assistant|support|received)\b/.test(ariaLabel)) return "bot";
+
+  // --- Alignment heuristic (user bubbles right-aligned, bot left-aligned) ---
+  try {
+    const style = window.getComputedStyle(el);
+    const parentStyle = el.parentElement ? window.getComputedStyle(el.parentElement) : null;
+    const selfAlign = style.textAlign || style.alignSelf || "";
+    const parentJustify = parentStyle?.justifyContent || "";
+    const marginLeft = style.marginLeft || "";
+    const marginRight = style.marginRight || "";
+
+    if (
+      selfAlign === "right" || selfAlign === "flex-end" || selfAlign === "end" ||
+      parentJustify === "flex-end" || parentJustify === "end" ||
+      (marginLeft === "auto" && marginRight !== "auto")
+    ) return "user";
+    if (
+      selfAlign === "left" || selfAlign === "flex-start" || selfAlign === "start" ||
+      parentJustify === "flex-start" || parentJustify === "start" ||
+      (marginRight === "auto" && marginLeft !== "auto")
+    ) return "bot";
+  } catch {}
+
+  return "unknown";
+}
+
+/**
+ * Check if an extracted text is too similar to the last user message we sent.
+ * Uses normalized comparison to catch minor formatting differences.
+ */
+function matchesUserMessage(text) {
+  const lastUser = (globalThis.__ASTRA_LAST_USER__ || "").trim();
+  if (!lastUser || !text) return false;
+  const normalize = (s) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const normUser = normalize(lastUser);
+  const normText = normalize(text);
+  if (normText === normUser) return true;
+  // User message is contained within the extracted text (echo with timestamp/prefix)
+  if (normText.includes(normUser) && normUser.length > 20 && normUser.length / normText.length > 0.5) return true;
+  // Extracted text is a prefix of the user message (truncated echo)
+  if (normUser.startsWith(normText) && normText.length > 20 && normText.length / normUser.length > 0.7) return true;
+  return false;
+}
+
+/**
+ * From a list of message elements, find the last one that is a bot/agent reply.
+ * Skips user bubbles using classification + text matching.
+ */
+function pickLastBotMessage(messageEls) {
+  if (!messageEls.length) return null;
+  // Walk from the bottom up
+  for (let i = messageEls.length - 1; i >= 0; i--) {
+    const el = messageEls[i];
+    const inner = el.querySelector?.(
+      "[class*='message-content' i], [class*='markdown' i], [class*='text' i], p"
+    ) || el;
+    const t = textOf(inner);
+    if (!t || t.length < 5 || looksLikeFooter(t)) continue;
+
+    const cls = classifyBubble(el);
+    if (cls === "user") continue;
+    if (cls === "unknown" && matchesUserMessage(t)) continue;
+    return t;
+  }
+  return null;
+}
+
 function extractFromRoleLog() {
   const logs = queryAllDeep("[role='log']")
     .filter((el) => el instanceof Element && isVisible(el))
@@ -165,12 +283,11 @@ function extractFromRoleLog() {
   const best = logs[0]?.el;
   if (!best) return null;
 
-  // Try list items first (common chat transcript structure)
-  const items = Array.from(best.querySelectorAll("li, article, div"))
-    .map((n) => ({ n, t: textOf(n) }))
-    .filter((x) => x.t.length > 0 && isExtractable(x.n, x.t));
-  const last = items[items.length - 1]?.t;
-  if (last) return last;
+  const items = Array.from(best.querySelectorAll("li, article, [class*='message' i], div"))
+    .filter((n) => n instanceof Element && isVisible(n) && isExtractable(n, textOf(n)));
+  const bot = pickLastBotMessage(items);
+  if (bot) return bot;
+
   const fallback = textOf(best);
   return fallback && !looksLikeFooter(fallback) ? fallback : null;
 }
@@ -185,28 +302,74 @@ function extractByCommonLabels() {
     );
   if (!candidates.length) return null;
   const best = candidates[0].el;
-  return textOf(best) || null;
+  const t = textOf(best);
+  return t && !matchesUserMessage(t) ? t : null;
 }
 
-/** AOL ais-chatbot / similar: ul.chatbot__dialogue + li.chatbot__message--is-bot (no role=log). */
-function extractFromVendorChatbotDialogue() {
-  const dialogues = queryAllDeep('[class*="chatbot__dialogue"]').filter(
-    (el) => el instanceof Element && isVisible(el)
-  );
-  const dialogue = dialogues[0];
+/**
+ * Generic embedded dialogue extractor.
+ * Finds any visible conversation/transcript container and pulls the last bot/agent message.
+ * Works for any vendor that uses "dialogue", "conversation", "transcript", or "message-list"
+ * class patterns.
+ */
+function extractFromEmbeddedDialogue() {
+  const dialogueSelectors = [
+    '[class*="dialogue" i]',
+    '[class*="conversation" i]',
+    '[class*="transcript" i]',
+    '[class*="message-list" i]',
+    '[class*="chat-history" i]',
+    '[class*="chatlog" i]',
+  ];
+
+  let dialogue = null;
+  for (const sel of dialogueSelectors) {
+    const found = queryAllDeep(sel).filter((el) => el instanceof Element && isVisible(el));
+    if (found.length) {
+      dialogue = found[0];
+      break;
+    }
+  }
   if (!dialogue) return null;
 
-  const botMsgs = Array.from(
-    dialogue.querySelectorAll('[class*="chatbot__message--is-bot"]')
-  ).filter((el) => el instanceof Element && isVisible(el));
-  const lastBot = botMsgs[botMsgs.length - 1];
-  if (!lastBot) return null;
+  // Collect all message-like children in the dialogue container
+  const allMsgs = Array.from(dialogue.querySelectorAll(
+    "li, article, [class*='message' i], [class*='bubble' i], [role='row'], div"
+  )).filter((el) => {
+    if (!(el instanceof Element) || !isVisible(el)) return false;
+    const t = textOf(el);
+    return t.length >= 10 && t.length < 5000 && !looksLikeFooter(t) && !isInteractive(el);
+  });
 
-  const textNode =
-    lastBot.querySelector('[class*="chatbot__message__text"]') ||
-    lastBot.querySelector(".chatbot__message__text");
-  const t = textOf(textNode || lastBot);
-  return t.length ? t : null;
+  // De-dup: remove ancestors that contain a more specific child
+  const leaves = allMsgs.filter((a) => !allMsgs.some((b) => a !== b && a.contains(b)));
+
+  const bot = pickLastBotMessage(leaves);
+  if (bot) return bot;
+
+  // Legacy fallback: try explicit bot selectors
+  const botSelectors = [
+    '[class*="bot-message" i]',
+    '[class*="assistant-message" i]',
+    '[class*="from-bot" i]',
+    '[class*="from-agent" i]',
+    '[class*="incoming" i]',
+    '[data-from="bot"]',
+    '[data-from="agent"]',
+    '[data-message-author-role="assistant"]',
+  ];
+  for (const sel of botSelectors) {
+    const msgs = Array.from(dialogue.querySelectorAll(sel)).filter(
+      (el) => el instanceof Element && isVisible(el)
+    );
+    if (msgs.length) {
+      const lastEl = msgs[msgs.length - 1];
+      const textNode = lastEl.querySelector('[class*="text" i], [class*="content" i], p') || lastEl;
+      const t = textOf(textNode);
+      if (t.length && !matchesUserMessage(t)) return t;
+    }
+  }
+  return null;
 }
 
 /** Generic assistant bubbles (data attrs, common class names). */
@@ -239,24 +402,23 @@ function extractFromAssistantBubbles() {
     const rb = b.getBoundingClientRect().bottom;
     return rb - ra;
   });
-  // Walk from the bottom and prefer a sentence-like reply over a chip row.
-  for (const candidate of sorted.slice(0, 4)) {
+  for (const candidate of sorted.slice(0, 6)) {
     const inner =
       candidate.querySelector(
         "[class*='message-content'], [class*='markdown'], [class*='text'], p"
       ) || candidate;
     const t = textOf(inner);
     if (!t.length || looksLikeFooter(t) || isLikelyButtonRow(candidate)) continue;
+    if (matchesUserMessage(t)) continue;
     if (looksSentencey(t)) return t;
   }
-  // Fallback: bottom-most that survived the filters, even if not sentencey.
   for (const candidate of sorted) {
     const inner =
       candidate.querySelector(
         "[class*='message-content'], [class*='markdown'], [class*='text'], p"
       ) || candidate;
     const t = textOf(inner);
-    if (t.length && !looksLikeFooter(t)) return t;
+    if (t.length && !looksLikeFooter(t) && !matchesUserMessage(t)) return t;
   }
   return null;
 }
@@ -328,13 +490,21 @@ function extractFromMessageLikeRows() {
   }
   const leaves = candidates.filter((a) => !candidates.some((b) => a !== b && b.el.contains(a.el)));
   if (!leaves.length) return null;
-  // Prefer the bottom-most leaf, but if the lowest one is a short chip-like
-  // label and there's a recent "sentencey" leaf right above it, take that.
+
+  // Sort bottom-most first, then use classification + text matching to skip user bubbles.
   leaves.sort((a, b) => b.bottom - a.bottom);
-  for (const leaf of leaves.slice(0, 4)) {
+  for (const leaf of leaves.slice(0, 6)) {
+    if (classifyBubble(leaf.el) === "user") continue;
+    if (matchesUserMessage(leaf.t)) continue;
     if (looksSentencey(leaf.t)) return leaf.t;
   }
-  return leaves[0]?.t || null;
+  // Fallback: any non-user bubble
+  for (const leaf of leaves) {
+    if (classifyBubble(leaf.el) === "user") continue;
+    if (matchesUserMessage(leaf.t)) continue;
+    if (leaf.t.length) return leaf.t;
+  }
+  return null;
 }
 
 /** Bottom-most text block sitting above the composer (fallback when vendors use hashed CSS). */
@@ -362,10 +532,17 @@ function extractLeafAboveComposer() {
     if (Math.abs(d) > 2) return d;
     return a.area - b.area;
   });
-  // Walk from the bottom up to 4 candidates, picking the first that reads
-  // like a real reply rather than a short chip/label.
-  for (const leaf of leaves.slice(0, 4)) {
+  // Walk from the bottom, skip user bubbles, pick the first bot reply.
+  for (const leaf of leaves.slice(0, 6)) {
+    if (classifyBubble(leaf.el) === "user") continue;
+    if (matchesUserMessage(leaf.t)) continue;
     if (looksSentencey(leaf.t)) return leaf.t;
+  }
+  // Fallback: any non-user text
+  for (const leaf of leaves.slice(0, 6)) {
+    if (classifyBubble(leaf.el) === "user") continue;
+    if (matchesUserMessage(leaf.t)) continue;
+    if (leaf.t.length) return leaf.t;
   }
   return leaves[0]?.t || null;
 }
@@ -377,14 +554,14 @@ function extractFromAriaLiveRegion() {
     .sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
   for (const region of regions) {
     const t = textOf(region);
-    if (t.length >= 15 && t.length < 8000 && !looksLikeFooter(t)) return t;
+    if (t.length >= 15 && t.length < 8000 && !looksLikeFooter(t) && !matchesUserMessage(t)) return t;
     const ps = Array.from(region.querySelectorAll("p, div")).filter(
       (x) => isVisible(x) && !isInteractive(x) && !isPinned(x)
     );
     const lastP = ps[ps.length - 1];
     if (lastP) {
       const tp = textOf(lastP);
-      if (tp.length >= 12 && !looksLikeFooter(tp)) return tp;
+      if (tp.length >= 12 && !looksLikeFooter(tp) && !matchesUserMessage(tp)) return tp;
     }
   }
   return null;
@@ -399,16 +576,21 @@ function extractFromRoleFeed() {
   const items = Array.from(
     feed.querySelectorAll("[role='article'], li, [class*='message' i]")
   ).filter((el) => el instanceof Element && isVisible(el) && !isInteractive(el) && !isPinned(el));
+
+  const bot = pickLastBotMessage(items);
+  if (bot) return bot;
+
+  // Legacy: grab last item if classification didn't work
   const last = items[items.length - 1];
   if (!last) return null;
   const t = textOf(last);
-  if (t.length < 10 || looksLikeFooter(t)) return null;
+  if (t.length < 10 || looksLikeFooter(t) || matchesUserMessage(t)) return null;
   return t;
 }
 
 (() => {
   const text =
-    extractFromVendorChatbotDialogue() ||
+    extractFromEmbeddedDialogue() ||
     extractFromAssistantBubbles() ||
     extractFromMessageLikeRows() ||
     extractLeafAboveComposer() ||
