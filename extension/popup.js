@@ -336,8 +336,10 @@ async function loadCatalog() {
     meta: `${s.evaluatorIds.length} evals`,
   }));
   suiteDD.setOptions(opts);
-  const defaultSuite = state.catalog.suites.find((s) => s.id === "owasp-llm-top10")?.id
-    || state.catalog.suites[0]?.id || "";
+  const defaultSuite =
+    state.catalog.suites.find((s) => s.id === "owasp-llm-top10")?.id ||
+    state.catalog.suites[0]?.id ||
+    "";
   suiteDD.setValue(defaultSuite);
   setSuite(defaultSuite);
 
@@ -1433,7 +1435,8 @@ async function checkActiveRun() {
   // Also check the popup's own multi-evaluator queue (survives between evaluators
   // when the service worker has already cleared astraRunStatus).
   const { astraPopupRun } = await chrome.storage.local.get("astraPopupRun");
-  const popupQueueActive = astraPopupRun?.running && Date.now() - (astraPopupRun.updatedAt || 0) < 5 * 60 * 1000;
+  const popupQueueActive =
+    astraPopupRun?.running && Date.now() - (astraPopupRun.updatedAt || 0) < 5 * 60 * 1000;
 
   if (!astraRunStatus?.running && !popupQueueActive) return false;
 
@@ -1562,7 +1565,11 @@ function startRunStatusPoller() {
             lastAssistant = t.content;
           }
         }
-        if (lastRound !== latestTurn.round || lastUser !== latestTurn.user || lastAssistant !== latestTurn.assistant) {
+        if (
+          lastRound !== latestTurn.round ||
+          lastUser !== latestTurn.user ||
+          lastAssistant !== latestTurn.assistant
+        ) {
           latestTurn = { round: lastRound, user: lastUser, assistant: lastAssistant };
           renderBubbles();
           setTurnProgress(lastRound);

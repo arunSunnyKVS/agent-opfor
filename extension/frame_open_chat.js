@@ -227,7 +227,9 @@ function findFloatingWidgetCandidates() {
     }
     const chatIframes = Array.from(document.querySelectorAll("iframe")).filter((fr) => {
       const src = (fr.getAttribute("src") || "").toLowerCase();
-      return isVisible(fr) && /chat|livechat|helpchat|chatbot|helpdesk|messenger|support-chat/.test(src);
+      return (
+        isVisible(fr) && /chat|livechat|helpchat|chatbot|helpdesk|messenger|support-chat/.test(src)
+      );
     });
     if (chatIframes.length) {
       return { ok: true, clicked: false, reason: "chat_iframe_already_present" };

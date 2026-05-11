@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { log } from "../../../../core/dist/lib/logger.js";
 import { input, select, checkbox, password, confirm } from "@inquirer/prompts";
 import { parse as parseYaml } from "yaml";
 import { loadBuiltinEvaluator } from "../../../../core/dist/evaluators/parseEvaluator.js";
@@ -611,10 +612,16 @@ export async function generateAgentAttacksFromConfig(opts: {
   const answers = await loadConfigFile(opts.configPath, catalog);
 
   const { attackLlm, judgeLlm, target, selectedEvaluatorIds, telemetry, turnMode, turns } = answers;
+
+  log.info(`Target:    ${target.name ?? target.endpoint ?? "(target)"}`);
+  log.info(`Generator: ${attackLlm.provider}/${attackLlm.model}`);
+  log.info(`Evaluators: ${selectedEvaluatorIds.length}\n`);
+
   const model = createModel(attackLlm);
 
   let langfuseTraceContext: string | undefined;
   if (telemetry && telemetry.provider !== "none") {
+    log.start("Fetching Langfuse traces...");
     try {
       langfuseTraceContext = await runSetupTraceCuration({
         telemetry,
@@ -623,17 +630,23 @@ export async function generateAgentAttacksFromConfig(opts: {
         targetDescription: target.description,
         outputDir: path.dirname(path.resolve(opts.outputPath)),
       });
+      log.success("Traces fetched — attacks will be grounded in real usage.");
     } catch {
-      // ignore; generation can proceed without trace context
+      log.warn("Trace curation failed — continuing without trace context.");
     }
   }
 
+  log.info(`Generating attack prompts for ${selectedEvaluatorIds.length} evaluator(s)...\n`);
+
   const allAttacks: AttackEntry[] = [];
-  for (const evaluatorId of selectedEvaluatorIds) {
+  for (let evalIdx = 0; evalIdx < selectedEvaluatorIds.length; evalIdx++) {
+    const evaluatorId = selectedEvaluatorIds[evalIdx];
     let evaluator;
     try {
+      log.start(`[${evalIdx + 1}/${selectedEvaluatorIds.length}] ${evaluatorId}: loading...`);
       evaluator = await loadBuiltinEvaluator(evaluatorId);
     } catch {
+      log.warn(`  ${evaluatorId}: skipped (evaluator file not found)`);
       continue;
     }
 
@@ -646,9 +659,15 @@ export async function generateAgentAttacksFromConfig(opts: {
           ? `${target.description}\nFunction signature: ${target.functionSignature ?? ""}`
           : target.description;
 
+    log.start(
+      `[${evalIdx + 1}/${selectedEvaluatorIds.length}] ${evaluatorId}: generating ${evaluator.patterns.length} prompt(s)...`
+    );
     const attacks = await generateAttackPrompts(evaluator, targetDescription, model, {
       traceContext: langfuseTraceContext,
     });
+    log.success(
+      `[${evalIdx + 1}/${selectedEvaluatorIds.length}] ${evaluatorId}: ${attacks.length} prompt(s) ready`
+    );
 
     for (const attack of attacks) {
       allAttacks.push({

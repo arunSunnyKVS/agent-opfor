@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { log } from "../../../../core/dist/lib/logger.js";
 import { createModel } from "../../../../core/dist/providers/factory.js";
 import { judgeResponse, errorJudge } from "../../../../core/dist/evaluators/judge.js";
 import type { ConversationTurn, JudgeResult } from "../../../../core/dist/evaluators/judge.js";
@@ -51,6 +52,8 @@ export async function runAgentAttacksFromFile(opts: {
   if (!attacks || attacks.length === 0) {
     throw new Error("No attack entries found in the prompts file. Run `astra generate` first.");
   }
+
+  log.success(`Loaded ${attacks.length} attack(s) from: ${inputPath}`);
 
   const targetScriptCli = typeof opts.targetScript === "string" ? opts.targetScript.trim() : "";
   const resolvedScript = targetScriptCli
@@ -110,6 +113,12 @@ export async function runAgentAttacksFromFile(opts: {
     byEvaluator.set(attack.evaluatorId, list);
   }
 
+  log.info(
+    `Target:  ${endpoint || (resolvedScript ? path.basename(resolvedScript) : (target.name ?? "(target)"))}`
+  );
+  log.info(`Judge:   ${judgeLabel}`);
+  log.info(`Attacks: ${attacks.length} across ${byEvaluator.size} evaluator(s)\n`);
+
   const reports: EvaluatorReport[] = [];
   let totalRun = 0;
   const propagation = promptsFile.telemetry?.propagation;
@@ -122,6 +131,8 @@ export async function runAgentAttacksFromFile(opts: {
 
   for (const [evaluatorId, entries] of byEvaluator) {
     const first = entries[0];
+
+    log.start(`Evaluator: ${evaluatorId} (${entries.length} attack(s))`);
 
     const evaluatorSpec: EvaluatorSpec = {
       id: evaluatorId,
@@ -140,6 +151,11 @@ export async function runAgentAttacksFromFile(opts: {
     for (const attack of entries) {
       const isMultiTurn = attack.turnMode === "multi";
       const numTurns = isMultiTurn ? (attack.turns ?? 3) : 1;
+
+      const attackLabel = isMultiTurn
+        ? `[${totalRun + testNumber}/${attacks.length}] ${attack.patternName} · multi-turn (${numTurns} turns)`
+        : `[${totalRun + testNumber}/${attacks.length}] ${attack.patternName}`;
+      log.start(attackLabel);
       const sessionId = isMultiTurn || target.sessionIdField ? randomUUID() : undefined;
 
       const conversationHistory: ConversationTurn[] = [];
@@ -163,6 +179,8 @@ export async function runAgentAttacksFromFile(opts: {
       };
 
       for (let t = 1; t <= numTurns; t++) {
+        if (isMultiTurn) log.log(`  ── turn ${t}/${numTurns}`);
+
         let userMessage: string;
         if (t === 1) {
           userMessage = attack.prompt;
@@ -214,6 +232,22 @@ export async function runAgentAttacksFromFile(opts: {
         reasoning: "No turns completed",
       };
 
+      const verdictLabel =
+        finalJudge.verdict === "PASS"
+          ? "✔ PASS"
+          : finalJudge.verdict === "ERROR"
+            ? "⚠ ERROR"
+            : "✖ FAIL";
+      if (finalJudge.verdict === "ERROR") {
+        log.log(
+          `  ${verdictLabel} · ${"errorMessage" in finalJudge && finalJudge.errorMessage ? String(finalJudge.errorMessage) : "error"}`
+        );
+      } else {
+        log.log(
+          `  ${verdictLabel} · score ${finalJudge.score}/10 · confidence ${finalJudge.confidence}%`
+        );
+      }
+
       results.push({
         testNumber: totalRun + testNumber,
         pattern: attack.patternName,
@@ -243,6 +277,27 @@ export async function runAgentAttacksFromFile(opts: {
     judgeLabel,
     generatorLabel
   );
+
+  let totalPass = 0,
+    totalFail = 0,
+    totalError = 0;
+  for (const r of reports) {
+    for (const t of r.results) {
+      if (t.judge.verdict === "PASS") totalPass++;
+      else if (t.judge.verdict === "FAIL") totalFail++;
+      else totalError++;
+    }
+  }
+  const safetyScore = totalRun > 0 ? Math.round((totalPass / totalRun) * 100) : 0;
+
+  log.success(`Report written:`);
+  log.log(`  HTML: ${paths.html}`);
+  log.log(`  JSON: ${paths.json}`);
+  log.box(
+    `Safety score: ${safetyScore}%  ·  ${totalPass}/${totalRun} passed  ·  ${totalFail} attack(s) succeeded` +
+      (totalError > 0 ? `  ·  ${totalError} error(s) excluded` : "")
+  );
+
   return paths;
 }
 

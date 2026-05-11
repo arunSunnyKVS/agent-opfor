@@ -174,27 +174,45 @@ function classifyBubble(el) {
     const cls = ((n.className || "") + "").toLowerCase();
     // User patterns
     if (
-      cls.includes("user-message") || cls.includes("usermessage") ||
-      cls.includes("from-user") || cls.includes("from_user") ||
-      cls.includes("visitor-message") || cls.includes("customer-message") ||
-      cls.includes("message--user") || cls.includes("message-user") ||
-      cls.includes("outgoing") || cls.includes("self-message") ||
-      cls.includes("sent-message") || cls.includes("is-user") ||
-      cls.includes("human-message") || cls.includes("humanmessage") ||
+      cls.includes("user-message") ||
+      cls.includes("usermessage") ||
+      cls.includes("from-user") ||
+      cls.includes("from_user") ||
+      cls.includes("visitor-message") ||
+      cls.includes("customer-message") ||
+      cls.includes("message--user") ||
+      cls.includes("message-user") ||
+      cls.includes("outgoing") ||
+      cls.includes("self-message") ||
+      cls.includes("sent-message") ||
+      cls.includes("is-user") ||
+      cls.includes("human-message") ||
+      cls.includes("humanmessage") ||
       cls.includes("mine")
-    ) return "user";
+    )
+      return "user";
     // Bot patterns
     if (
-      cls.includes("bot-message") || cls.includes("botmessage") ||
-      cls.includes("from-bot") || cls.includes("from-agent") || cls.includes("from_agent") ||
-      cls.includes("agent-message") || cls.includes("agentmessage") ||
-      cls.includes("assistant-message") || cls.includes("assistantmessage") ||
-      cls.includes("message--bot") || cls.includes("message-bot") ||
-      cls.includes("message--agent") || cls.includes("message-agent") ||
-      cls.includes("incoming") || cls.includes("received-message") ||
-      cls.includes("is-bot") || cls.includes("is-agent") ||
+      cls.includes("bot-message") ||
+      cls.includes("botmessage") ||
+      cls.includes("from-bot") ||
+      cls.includes("from-agent") ||
+      cls.includes("from_agent") ||
+      cls.includes("agent-message") ||
+      cls.includes("agentmessage") ||
+      cls.includes("assistant-message") ||
+      cls.includes("assistantmessage") ||
+      cls.includes("message--bot") ||
+      cls.includes("message-bot") ||
+      cls.includes("message--agent") ||
+      cls.includes("message-agent") ||
+      cls.includes("incoming") ||
+      cls.includes("received-message") ||
+      cls.includes("is-bot") ||
+      cls.includes("is-agent") ||
       cls.includes("system-message")
-    ) return "bot";
+    )
+      return "bot";
   }
 
   // --- ARIA label ---
@@ -212,15 +230,23 @@ function classifyBubble(el) {
     const marginRight = style.marginRight || "";
 
     if (
-      selfAlign === "right" || selfAlign === "flex-end" || selfAlign === "end" ||
-      parentJustify === "flex-end" || parentJustify === "end" ||
+      selfAlign === "right" ||
+      selfAlign === "flex-end" ||
+      selfAlign === "end" ||
+      parentJustify === "flex-end" ||
+      parentJustify === "end" ||
       (marginLeft === "auto" && marginRight !== "auto")
-    ) return "user";
+    )
+      return "user";
     if (
-      selfAlign === "left" || selfAlign === "flex-start" || selfAlign === "start" ||
-      parentJustify === "flex-start" || parentJustify === "start" ||
+      selfAlign === "left" ||
+      selfAlign === "flex-start" ||
+      selfAlign === "start" ||
+      parentJustify === "flex-start" ||
+      parentJustify === "start" ||
       (marginRight === "auto" && marginLeft !== "auto")
-    ) return "bot";
+    )
+      return "bot";
   } catch {}
 
   return "unknown";
@@ -238,9 +264,19 @@ function matchesUserMessage(text) {
   const normText = normalize(text);
   if (normText === normUser) return true;
   // User message is contained within the extracted text (echo with timestamp/prefix)
-  if (normText.includes(normUser) && normUser.length > 20 && normUser.length / normText.length > 0.5) return true;
+  if (
+    normText.includes(normUser) &&
+    normUser.length > 20 &&
+    normUser.length / normText.length > 0.5
+  )
+    return true;
   // Extracted text is a prefix of the user message (truncated echo)
-  if (normUser.startsWith(normText) && normText.length > 20 && normText.length / normUser.length > 0.7) return true;
+  if (
+    normUser.startsWith(normText) &&
+    normText.length > 20 &&
+    normText.length / normUser.length > 0.7
+  )
+    return true;
   return false;
 }
 
@@ -253,9 +289,10 @@ function pickLastBotMessage(messageEls) {
   // Walk from the bottom up
   for (let i = messageEls.length - 1; i >= 0; i--) {
     const el = messageEls[i];
-    const inner = el.querySelector?.(
-      "[class*='message-content' i], [class*='markdown' i], [class*='text' i], p"
-    ) || el;
+    const inner =
+      el.querySelector?.(
+        "[class*='message-content' i], [class*='markdown' i], [class*='text' i], p"
+      ) || el;
     const t = textOf(inner);
     if (!t || t.length < 5 || looksLikeFooter(t)) continue;
 
@@ -283,8 +320,9 @@ function extractFromRoleLog() {
   const best = logs[0]?.el;
   if (!best) return null;
 
-  const items = Array.from(best.querySelectorAll("li, article, [class*='message' i], div"))
-    .filter((n) => n instanceof Element && isVisible(n) && isExtractable(n, textOf(n)));
+  const items = Array.from(best.querySelectorAll("li, article, [class*='message' i], div")).filter(
+    (n) => n instanceof Element && isVisible(n) && isExtractable(n, textOf(n))
+  );
   const bot = pickLastBotMessage(items);
   if (bot) return bot;
 
@@ -333,9 +371,11 @@ function extractFromEmbeddedDialogue() {
   if (!dialogue) return null;
 
   // Collect all message-like children in the dialogue container
-  const allMsgs = Array.from(dialogue.querySelectorAll(
-    "li, article, [class*='message' i], [class*='bubble' i], [role='row'], div"
-  )).filter((el) => {
+  const allMsgs = Array.from(
+    dialogue.querySelectorAll(
+      "li, article, [class*='message' i], [class*='bubble' i], [role='row'], div"
+    )
+  ).filter((el) => {
     if (!(el instanceof Element) || !isVisible(el)) return false;
     const t = textOf(el);
     return t.length >= 10 && t.length < 5000 && !looksLikeFooter(t) && !isInteractive(el);
@@ -554,7 +594,8 @@ function extractFromAriaLiveRegion() {
     .sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
   for (const region of regions) {
     const t = textOf(region);
-    if (t.length >= 15 && t.length < 8000 && !looksLikeFooter(t) && !matchesUserMessage(t)) return t;
+    if (t.length >= 15 && t.length < 8000 && !looksLikeFooter(t) && !matchesUserMessage(t))
+      return t;
     const ps = Array.from(region.querySelectorAll("p, div")).filter(
       (x) => isVisible(x) && !isInteractive(x) && !isPinned(x)
     );

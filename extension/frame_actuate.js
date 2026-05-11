@@ -115,7 +115,9 @@ function setInputValue(el, value) {
     }
     el.dispatchEvent(new Event("change", { bubbles: true }));
     // Some frameworks also listen for keyup to finalize state.
-    try { el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified" })); } catch {}
+    try {
+      el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Unidentified" }));
+    } catch {}
     return { kind: el.tagName.toLowerCase() };
   }
 
@@ -298,14 +300,25 @@ function detectLengthError(inputEl) {
         text.includes("max length") ||
         text.includes("exceeds")
       ) {
-        const limitMatch = text.match(/(\d+)\s*\/\s*(\d+)/) || text.match(/(?:max|limit|maximum)\D*(\d+)/i);
+        const limitMatch =
+          text.match(/(\d+)\s*\/\s*(\d+)/) || text.match(/(?:max|limit|maximum)\D*(\d+)/i);
         const maxLength = limitMatch ? Number(limitMatch[2] || limitMatch[1]) : undefined;
-        return { error: "message_too_long", maxLength, hint: text.slice(0, 120), currentLength: currentLen };
+        return {
+          error: "message_too_long",
+          maxLength,
+          hint: text.slice(0, 120),
+          currentLength: currentLen,
+        };
       }
       // Counter pattern like "523/500" where first > second means over limit
       const counter = text.match(/(\d+)\s*\/\s*(\d+)/);
       if (counter && Number(counter[1]) > Number(counter[2])) {
-        return { error: "message_too_long", maxLength: Number(counter[2]), currentLength: currentLen, hint: text.slice(0, 120) };
+        return {
+          error: "message_too_long",
+          maxLength: Number(counter[2]),
+          currentLength: currentLen,
+          hint: text.slice(0, 120),
+        };
       }
     }
   }

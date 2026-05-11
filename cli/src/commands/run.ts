@@ -116,13 +116,10 @@ export function registerRunCommand(program: Command): void {
         if (mode === "mcp") {
           await runMcpAttackPlan({ input: attacksPath, outDir: resolvedOutDir });
         } else {
-          const paths = await runAgentAttacksFromFile({
+          await runAgentAttacksFromFile({
             input: attacksPath,
             outputDir: resolvedOutDir,
           });
-          console.log(`\nReports:`);
-          console.log(`  HTML: ${paths.html}`);
-          console.log(`  JSON: ${paths.json}\n`);
         }
       }
     );

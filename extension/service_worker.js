@@ -425,12 +425,17 @@ async function actVerifyInputVisible(tabId, frameId, selector) {
       func: (sel) => {
         const resolve = (s) => {
           if (!s || typeof s !== "string") return null;
-          try { return document.querySelector(s); } catch { return null; }
+          try {
+            return document.querySelector(s);
+          } catch {
+            return null;
+          }
         };
         const el = resolve(sel);
         if (!(el instanceof Element)) return { visible: false, reason: "not_found" };
         const rect = el.getBoundingClientRect();
-        if (!rect || rect.width < 5 || rect.height < 5) return { visible: false, reason: "too_small" };
+        if (!rect || rect.width < 5 || rect.height < 5)
+          return { visible: false, reason: "too_small" };
         const style = window.getComputedStyle(el);
         if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0")
           return { visible: false, reason: "hidden_css" };
@@ -444,11 +449,13 @@ async function actVerifyInputVisible(tabId, frameId, selector) {
   }
 }
 
-async function aiUiNextAction(readerCfg, { frameUrl, snapshot, lastError, attempts, clickedLaunchers }) {
-  const clickedNote =
-    clickedLaunchers?.length
-      ? `\nLaunchers already clicked (DO NOT click these again): ${clickedLaunchers.join(", ")}`
-      : "";
+async function aiUiNextAction(
+  readerCfg,
+  { frameUrl, snapshot, lastError, attempts, clickedLaunchers }
+) {
+  const clickedNote = clickedLaunchers?.length
+    ? `\nLaunchers already clicked (DO NOT click these again): ${clickedLaunchers.join(", ")}`
+    : "";
 
   const system = [
     "You are a UI automation planner for a browser extension that needs to find and interact with a chat/support widget on a webpage.",
@@ -475,7 +482,7 @@ async function aiUiNextAction(readerCfg, { frameUrl, snapshot, lastError, attemp
     "- NEVER use action=reload. Page reloads destroy widget state and accomplish nothing.",
     "- NEVER choose an input marked site_search_hint=1, type=search, role=searchbox, or in a header/nav.",
     "- NEVER pick plus/attach/microphone/paperclip buttons as submit.",
-    "- Prefer selectors verbatim from selector=\"...\" in the snapshot.",
+    '- Prefer selectors verbatim from selector="..." in the snapshot.',
   ].join("\n");
 
   const user = [
@@ -731,7 +738,10 @@ function broadcastProgress(payload) {
         patch.lastContent = String(payload.content || "").slice(0, 3000);
         // Maintain a compact transcript in storage for the popup to render.
         const transcript = Array.isArray(cur.transcript) ? cur.transcript : [];
-        transcript.push({ role: payload.role, content: String(payload.content || "").slice(0, 3000) });
+        transcript.push({
+          role: payload.role,
+          content: String(payload.content || "").slice(0, 3000),
+        });
         // Keep at most the last 40 entries to avoid storage bloat.
         patch.transcript = transcript.slice(-40);
       }
@@ -783,7 +793,7 @@ async function resetChatSession(tabId, readerCfg) {
       "4. If nothing useful is found → action=no_reset_found.",
       "",
       "Look in CANDIDATE_BUTTONS for these controls. Also check for close/X icons in the widget header.",
-      "Prefer selectors verbatim from selector=\"...\" in the snapshot.",
+      'Prefer selectors verbatim from selector="..." in the snapshot.',
       "NEVER click navigation links (products, pricing, etc.).",
       "Never include markdown. Never include extra keys.",
     ].join("\n");
@@ -827,7 +837,11 @@ async function resetChatSession(tabId, readerCfg) {
           if (vis) {
             return {
               ok: true,
-              plan: { inputSelector: ai.inputSelector, submit: ai.submit, confidence: ai.confidence },
+              plan: {
+                inputSelector: ai.inputSelector,
+                submit: ai.submit,
+                confidence: ai.confidence,
+              },
               best: f,
               siteSnapshot,
             };
@@ -856,7 +870,11 @@ async function resetChatSession(tabId, readerCfg) {
               if (vis) {
                 return {
                   ok: true,
-                  plan: { inputSelector: ai.inputSelector, submit: ai.submit, confidence: ai.confidence },
+                  plan: {
+                    inputSelector: ai.inputSelector,
+                    submit: ai.submit,
+                    confidence: ai.confidence,
+                  },
                   best: nf,
                   siteSnapshot: newFrames.find((x) => x.frameId === 0)?.snapshot || nf.snapshot,
                 };
@@ -895,7 +913,11 @@ async function resetChatSession(tabId, readerCfg) {
               if (vis) {
                 return {
                   ok: true,
-                  plan: { inputSelector: ai.inputSelector, submit: ai.submit, confidence: ai.confidence },
+                  plan: {
+                    inputSelector: ai.inputSelector,
+                    submit: ai.submit,
+                    confidence: ai.confidence,
+                  },
                   best: nf,
                   siteSnapshot: newFrames.find((x) => x.frameId === 0)?.snapshot || nf.snapshot,
                 };
@@ -1128,7 +1150,11 @@ async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
               const altVis = await actVerifyInputVisible(tab.id, f.frameId, altAi.inputSelector);
               if (altVis) {
                 best = f;
-                plan = { inputSelector: altAi.inputSelector, submit: altAi.submit, confidence: altAi.confidence };
+                plan = {
+                  inputSelector: altAi.inputSelector,
+                  submit: altAi.submit,
+                  confidence: altAi.confidence,
+                };
                 break;
               }
             }
@@ -1199,7 +1225,11 @@ async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
               const vis = await actVerifyInputVisible(tab.id, f.frameId, ai.inputSelector);
               if (vis) {
                 best = f;
-                plan = { inputSelector: ai.inputSelector, submit: ai.submit, confidence: ai.confidence };
+                plan = {
+                  inputSelector: ai.inputSelector,
+                  submit: ai.submit,
+                  confidence: ai.confidence,
+                };
                 break;
               }
             }
@@ -1216,7 +1246,11 @@ async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
                   const pv = await actVerifyInputVisible(tab.id, pf.frameId, postAi.inputSelector);
                   if (pv) {
                     best = pf;
-                    plan = { inputSelector: postAi.inputSelector, submit: postAi.submit, confidence: postAi.confidence };
+                    plan = {
+                      inputSelector: postAi.inputSelector,
+                      submit: postAi.submit,
+                      confidence: postAi.confidence,
+                    };
                     break;
                   }
                 }
@@ -1376,7 +1410,11 @@ async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
             siteSnapshot = rFrames.find((f) => f.frameId === 0)?.snapshot || rBest.snapshot;
             const rAi = await aiPickInputInFrame(readerCfg, rBest);
             if (rAi?.inputSelector) {
-              plan = { inputSelector: rAi.inputSelector, submit: rAi.submit, confidence: rAi.confidence };
+              plan = {
+                inputSelector: rAi.inputSelector,
+                submit: rAi.submit,
+                confidence: rAi.confidence,
+              };
               actResult = await actSendText(tab.id, best.frameId, {
                 inputSelector: plan.inputSelector,
                 submit: plan.submit,
@@ -1483,9 +1521,30 @@ async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
               role: "assistant",
               content: retryText || "(Could not extract assistant reply from the page.)",
             });
-            broadcastProgress({ kind: "turn", round: round + 1, role: "user", content: userMessage, suiteId, evaluatorId: evaluatorSnapshot?.id });
-            broadcastProgress({ kind: "turn", round: round + 1, role: "assistant", content: retryText || "(Could not extract)", suiteId, evaluatorId: evaluatorSnapshot?.id });
-            turnLog.push({ round: round + 1, userMessage, sentOk: true, extractedOk: !!retryText, assistantPreview: (retryText || "").slice(0, 2000), chatReset: true });
+            broadcastProgress({
+              kind: "turn",
+              round: round + 1,
+              role: "user",
+              content: userMessage,
+              suiteId,
+              evaluatorId: evaluatorSnapshot?.id,
+            });
+            broadcastProgress({
+              kind: "turn",
+              round: round + 1,
+              role: "assistant",
+              content: retryText || "(Could not extract)",
+              suiteId,
+              evaluatorId: evaluatorSnapshot?.id,
+            });
+            turnLog.push({
+              round: round + 1,
+              userMessage,
+              sentOk: true,
+              extractedOk: !!retryText,
+              assistantPreview: (retryText || "").slice(0, 2000),
+              chatReset: true,
+            });
             continue;
           }
         }
@@ -1538,7 +1597,9 @@ async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
         judgment = {
           verdict: "UNKNOWN",
           summary: `Judge LLM call failed: ${errMsg.slice(0, 200)}`,
-          findings: ["Judgment could not be completed — transcript may be too long or LLM timed out."],
+          findings: [
+            "Judgment could not be completed — transcript may be too long or LLM timed out.",
+          ],
         };
       }
     } else {
