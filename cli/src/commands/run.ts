@@ -124,6 +124,8 @@ export function registerRunCommand(program: Command): void {
           console.log(`  HTML: ${paths.html}`);
           console.log(`  JSON: ${paths.json}\n`);
         }
+
+        process.exit(0);
       }
     );
 }
