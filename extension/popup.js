@@ -219,7 +219,7 @@ function setSuite(id) {
   state.suiteId = id;
   const suite = state.catalog?.suites.find((s) => s.id === id);
   $("suiteDescription").textContent = suite?.description || "";
-  state.selectedEvaluators = new Set(suite ? suite.evaluatorIds : []);
+  state.selectedEvaluators = new Set(suite && id !== "all-evaluators" ? suite.evaluatorIds : []);
   renderEvaluatorList();
   updateRunButton();
 }
@@ -355,10 +355,21 @@ async function loadCatalog() {
       `catalog.json (${r.status}). Run: node src/extension/scripts/build-catalog.mjs`
     );
   state.catalog = await r.json();
+
+  state.catalog.suites.push({
+    id: "all-evaluators",
+    name: "All Evaluators",
+    description: "Every evaluator across every suite — pick any subset to run.",
+    evaluatorIds: state.catalog.evaluators.map((e) => e.id),
+  });
+
   const opts = state.catalog.suites.map((s) => ({
     value: s.id,
     label: s.name,
-    meta: `${s.evaluatorIds.length} evals`,
+    meta:
+      s.id === "all-evaluators"
+        ? `${s.evaluatorIds.length} evals · all suites`
+        : `${s.evaluatorIds.length} evals`,
   }));
   suiteDD.setOptions(opts);
   const defaultSuite =
@@ -1388,7 +1399,10 @@ async function downloadReport() {
         } catch {}
 
         if (judgedResult) {
-          const v = String(judgedResult.judgment.verdict || "FAIL").toUpperCase() === "PASS" ? "PASS" : "FAIL";
+          const v =
+            String(judgedResult.judgment.verdict || "FAIL").toUpperCase() === "PASS"
+              ? "PASS"
+              : "FAIL";
           state.results = [
             {
               id: judgedResult.evaluatorId || liveTranscript.evaluatorId || "unknown",
@@ -1480,7 +1494,10 @@ async function runOneEvaluator(ev, { resume = false } = {}) {
       String(directResult.judgment?.verdict || "FAIL").toUpperCase() === "PASS" ? "PASS" : "FAIL";
     return {
       record: {
-        id: ev.id, name: ev.name, sev: ev.sev, verdict,
+        id: ev.id,
+        name: ev.name,
+        sev: ev.sev,
+        verdict,
         summary: directResult.judgment?.summary || "",
         raw: directResult,
       },
@@ -1535,8 +1552,14 @@ async function pollStorageForResult(evaluatorId) {
 
     let data;
     try {
-      data = await chrome.storage.local.get(["opforLastResult", "opforLiveTranscript", "opforRunStatus"]);
-    } catch { continue; }
+      data = await chrome.storage.local.get([
+        "opforLastResult",
+        "opforLiveTranscript",
+        "opforRunStatus",
+      ]);
+    } catch {
+      continue;
+    }
 
     // 1. Best case: completed result with judgment
     const last = data.opforLastResult;
@@ -1617,7 +1640,8 @@ async function pollStorageForResult(evaluatorId) {
   try {
     const data = await chrome.storage.local.get(["opforLastResult", "opforLiveTranscript"]);
     if (data.opforLastResult?.judgment) return data.opforLastResult;
-    if (data.opforLastResult?.errorMessage) return { ok: false, error: data.opforLastResult.errorMessage };
+    if (data.opforLastResult?.errorMessage)
+      return { ok: false, error: data.opforLastResult.errorMessage };
 
     const live = data.opforLiveTranscript;
     if (live?.transcript?.length >= 2) {
@@ -1634,7 +1658,10 @@ async function pollStorageForResult(evaluatorId) {
     }
   } catch {}
 
-  return { ok: false, error: "Run did not produce a result. The service worker may have been interrupted." };
+  return {
+    ok: false,
+    error: "Run did not produce a result. The service worker may have been interrupted.",
+  };
 }
 
 async function startRun({ resume = false } = {}) {
@@ -1708,7 +1735,10 @@ async function startRun({ resume = false } = {}) {
           opforLastResult?.evaluatorId === ev.id &&
           opforLastResult?.transcript?.length >= 2
         ) {
-          const v = String(opforLastResult.judgment.verdict || "FAIL").toUpperCase() === "PASS" ? "PASS" : "FAIL";
+          const v =
+            String(opforLastResult.judgment.verdict || "FAIL").toUpperCase() === "PASS"
+              ? "PASS"
+              : "FAIL";
           recovered = {
             id: ev.id,
             name: ev.name,
@@ -1727,7 +1757,10 @@ async function startRun({ resume = false } = {}) {
               judgeHint: state.judgeHint || "",
             });
             if (judged?.ok && judged?.judgment) {
-              const v = String(judged.judgment.verdict || "FAIL").toUpperCase() === "PASS" ? "PASS" : "FAIL";
+              const v =
+                String(judged.judgment.verdict || "FAIL").toUpperCase() === "PASS"
+                  ? "PASS"
+                  : "FAIL";
               recovered = {
                 id: ev.id,
                 name: ev.name,
