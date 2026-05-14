@@ -26,7 +26,7 @@ One tool to generate OWASP-mapped attack prompts, fire them at your target, and 
 | -------------- | -------------------------------------------------- | --------------------------------------------------- |
 | **CLI**        | `opfor setup` → `opfor generate` → `opfor execute` | Terminal-first workflows, CI/CD                     |
 | **MCP Server** | Add to Cursor / Claude Desktop, then ask in chat   | Agents that test agents                             |
-| **Skills**     | `/opfor-setup` and `/opfor-run` slash commands     | Any AI coding agent (Cursor, Claude Code, Windsurf) |
+| **Skills**     | `/opfor-setup` and `/opfor-execute` slash commands | Any AI coding agent (Cursor, Claude Code, Windsurf) |
 
 All three modes share the same evaluators, attack templates, and judge logic.
 
@@ -164,7 +164,7 @@ The agent calls three tools in sequence:
 | ----------------------- | ----------------------------------------------------------------------- |
 | `opfor_list_evaluators` | Returns all evaluator IDs, severities, OWASP tags, and available suites |
 | `opfor_setup`           | Generates targeted attack prompts (inline params or config file path)   |
-| `opfor_run`             | Fires attacks, judges responses, writes HTML + JSON reports             |
+| `opfor_execute`         | Fires attacks, judges responses, writes HTML + JSON reports             |
 
 Full MCP reference: [`docs/mcp.md`](docs/mcp.md)
 
@@ -176,7 +176,7 @@ In any AI coding agent that supports slash commands (Cursor, Claude Code, Windsu
 
 ```
 /opfor-setup    ← interactive wizard: picks target, suite, LLM provider
-/opfor-run      ← fires attacks and generates a report in chat
+/opfor-execute  ← fires attacks and generates a report in chat
 ```
 
 No CLI install needed. The agent reads the skill files directly from the `skills/` directory.
