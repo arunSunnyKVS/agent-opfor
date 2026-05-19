@@ -198,6 +198,7 @@ function renderEvaluatorList() {
       else state.selectedEvaluators.add(ev.id);
       renderEvaluatorList();
       updateRunButton();
+      saveSettings();
     });
     list.appendChild(row);
   }
@@ -246,13 +247,24 @@ function updateRunButton() {
 
 // ── Suite description + dropdown wiring ────────────────────────
 let suiteDD, modelDD, providerDD;
-function setSuite(id) {
+
+/**
+ * @param {string} id
+ * @param {{ selectedIds?: string[] | null }} [opts]
+ */
+function setSuite(id, { selectedIds = undefined } = {}) {
   state.suiteId = id;
   const suite = state.catalog?.suites.find((s) => s.id === id);
   $("suiteDescription").textContent = suite?.description || "";
-  state.selectedEvaluators = new Set(suite && id !== "all-evaluators" ? suite.evaluatorIds : []);
+  const validIds = new Set(suite?.evaluatorIds || []);
+  if (selectedIds !== undefined && selectedIds !== null) {
+    state.selectedEvaluators = new Set(selectedIds.filter((eid) => validIds.has(eid)));
+  } else {
+    state.selectedEvaluators = new Set(suite && id !== "all-evaluators" ? suite.evaluatorIds : []);
+  }
   renderEvaluatorList();
   updateRunButton();
+  saveSettings();
 }
 
 // ── Scrape toggle / agent description ──────────────────────────
@@ -335,6 +347,10 @@ async function loadSettings() {
     attackObjective: s.attackObjective ?? "",
     businessUseCase: s.businessUseCase ?? "",
     judgeHint: s.judgeHint ?? "",
+    suiteId: typeof s.suiteId === "string" ? s.suiteId : "",
+    _persistedEvaluatorIds: Array.isArray(s.selectedEvaluatorIds)
+      ? s.selectedEvaluatorIds.filter((id) => typeof id === "string" && id)
+      : null,
   });
   const profiles = stored.opforLlmProfiles;
   if (profiles?.attacker) {
@@ -355,6 +371,8 @@ async function saveSettings() {
       attackObjective: state.attackObjective,
       businessUseCase: state.businessUseCase,
       judgeHint: state.judgeHint,
+      suiteId: state.suiteId || "",
+      selectedEvaluatorIds: [...state.selectedEvaluators],
     },
   });
 }
@@ -401,18 +419,29 @@ async function loadCatalog() {
         : `${s.evaluatorIds.length} evals`,
   }));
   suiteDD.setOptions(opts);
+
+  const suiteExists = (sid) => state.catalog.suites.some((s) => s.id === sid);
   const defaultSuite =
     state.catalog.suites.find((s) => s.id === "owasp-llm-top10")?.id ||
     state.catalog.suites[0]?.id ||
     "";
-  suiteDD.setValue(defaultSuite);
-  setSuite(defaultSuite);
+  const persistedSuite = state.suiteId && suiteExists(state.suiteId) ? state.suiteId : "";
+  const suiteToUse = persistedSuite || defaultSuite;
+  const persistedEvals = state._persistedEvaluatorIds;
+  delete state._persistedEvaluatorIds;
 
-  // For OWASP LLM Top 10, default to only "prompt-injection" selected.
-  if (defaultSuite === "owasp-llm-top10") {
-    state.selectedEvaluators = new Set(["prompt-injection"]);
-    renderEvaluatorList();
-    updateRunButton();
+  suiteDD.setValue(suiteToUse);
+
+  if (persistedSuite === suiteToUse && persistedEvals != null) {
+    setSuite(suiteToUse, { selectedIds: persistedEvals });
+  } else {
+    setSuite(suiteToUse);
+    if (suiteToUse === "owasp-llm-top10" && !persistedSuite) {
+      state.selectedEvaluators = new Set(["prompt-injection"]);
+      renderEvaluatorList();
+      updateRunButton();
+      saveSettings();
+    }
   }
 }
 
@@ -2045,6 +2074,7 @@ async function startRun({ resume = false } = {}) {
 
   // Build queue from current selection (or use existing queue if resuming)
   if (!resume) {
+    await saveSettings();
     const suite = state.catalog?.suites.find((s) => s.id === state.suiteId);
     if (!suite) {
       state.running = false;
@@ -2304,6 +2334,7 @@ function wire() {
     else state.selectedEvaluators = new Set(suite.evaluatorIds);
     renderEvaluatorList();
     updateRunButton();
+    saveSettings();
   });
 
   // Scrape toggle
