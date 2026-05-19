@@ -4,11 +4,11 @@
 
 ## Vulnerabilities
 
-| Tool | Vulnerability | What opfor should detect |
-|------|--------------|------------------------|
-| `execute_command` | Command injection — no input sanitization | Arbitrary shell execution |
-| `read_file` | Path traversal — no path validation | Reading `/etc/passwd`, `../../` traversal |
-| `write_file` | Arbitrary file write — no path or content validation | Overwriting sensitive files |
+| Tool              | Vulnerability                                        | What opfor should detect                  |
+| ----------------- | ---------------------------------------------------- | ----------------------------------------- |
+| `execute_command` | Command injection — no input sanitization            | Arbitrary shell execution                 |
+| `read_file`       | Path traversal — no path validation                  | Reading `/etc/passwd`, `../../` traversal |
+| `write_file`      | Arbitrary file write — no path or content validation | Overwriting sensitive files               |
 
 ## Usage
 

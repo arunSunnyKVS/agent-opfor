@@ -20,6 +20,38 @@
     </marker>
   </defs>
 
+  <style>
+    .hl-pulse {
+      animation: hlPulse 2.4s ease-in-out infinite;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    @keyframes hlPulse {
+      0%, 100% { opacity: 1; r: 3; }
+      50%      { opacity: 0.45; r: 5; }
+    }
+
+    .hl-ring {
+      animation: hlRing 3s ease-out infinite;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    @keyframes hlRing {
+      0%   { r: 4;  opacity: 0.5; }
+      100% { r: 18; opacity: 0; }
+    }
+
+    .hl-flow {
+      animation: hlDash 1.6s linear infinite;
+    }
+    .hl-flow.hl-flow-slow {
+      animation-duration: 2.8s;
+    }
+    @keyframes hlDash {
+      to { stroke-dashoffset: -24; }
+    }
+  </style>
+
   <rect width="1200" height="480" fill="url(#hl-bg)"></rect>
   <ellipse cx="600" cy="240" rx="520" ry="280" fill="url(#hl-glow)"></ellipse>
 

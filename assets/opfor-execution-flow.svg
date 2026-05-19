@@ -27,6 +27,22 @@
     </marker>
   </defs>
 
+  <style>
+    .pl-flow {
+      animation: plDash 1.6s linear infinite;
+    }
+    @keyframes plDash {
+      to { stroke-dashoffset: -24; }
+    }
+
+    .pl-flow-warm {
+      animation: plDashWarm 2s linear infinite;
+    }
+    @keyframes plDashWarm {
+      to { stroke-dashoffset: -24; }
+    }
+  </style>
+
   <rect width="1200" height="380" fill="url(#pl-bg)"></rect>
   <ellipse cx="620" cy="190" rx="540" ry="200" fill="url(#pl-glow)"></ellipse>
 
