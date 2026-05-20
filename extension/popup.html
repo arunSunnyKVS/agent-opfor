@@ -656,6 +656,41 @@
         font-family: "Geist Mono", ui-monospace, monospace;
       }
 
+      .dd-search-wrap {
+        position: sticky;
+        top: 0;
+        padding: 6px 8px;
+        background: var(--bg-2);
+        border-bottom: 1px solid var(--line);
+        z-index: 1;
+      }
+      .dd-search {
+        width: 100%;
+        padding: 7px 10px;
+        font-size: 13px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg-1);
+        color: var(--fg);
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      .dd-search:focus {
+        border-color: var(--accent);
+      }
+      .dd-search::placeholder {
+        color: var(--muted-2);
+      }
+      .dd-options-list {
+        overflow-y: auto;
+      }
+      .dd-no-results {
+        padding: 12px;
+        font-size: 13px;
+        color: var(--muted-2);
+        text-align: center;
+      }
+
       .dd-desc {
         font-size: 12px;
         color: var(--muted-2);

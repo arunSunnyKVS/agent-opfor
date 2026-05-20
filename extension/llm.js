@@ -7,7 +7,7 @@ export async function callOpenAiCompat({ baseUrl, apiKey, model, messages, signa
   const signal = signalOpt ?? state.uiRunAbortController?.signal;
   const modelStr = String(model || "");
   // Some OpenAI-compatible routers (e.g. LiteLLM) reject temperature=0 for gpt-5 family.
-  const temperature = /^gpt-5/i.test(modelStr) ? 1 : 0;
+  const temperature = /gpt-5/i.test(modelStr) ? 1 : 0;
   let resp;
   try {
     resp = await fetch(url, {

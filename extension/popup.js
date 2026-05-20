@@ -152,7 +152,7 @@ function bindToggle(btnId, getter, setter) {
 }
 
 // ── Custom dropdown ────────────────────────────────────────────
-function buildDropdown(rootId, options, value, onChange, { onOpen } = {}) {
+function buildDropdown(rootId, options, value, onChange, { onOpen, searchable = false } = {}) {
   const root = $(rootId);
   const button = root.querySelector(".dd-button");
   const labelEl = button.querySelector(".label");
@@ -160,11 +160,25 @@ function buildDropdown(rootId, options, value, onChange, { onOpen } = {}) {
   const spinnerEl = button.querySelector(".dd-loading-spinner");
   const menu = root.querySelector(".dd-menu");
 
-  function render() {
-    const cur = options.find((o) => o.value === value);
-    labelEl.textContent = cur ? cur.label : "Select model";
-    menu.innerHTML = "";
-    for (const o of options) {
+  let searchInput = null;
+  let filterText = "";
+  const SEARCH_THRESHOLD = 10;
+
+  function shouldShowSearch() {
+    return searchable || options.length > SEARCH_THRESHOLD;
+  }
+
+  function renderOptions(filtered) {
+    const listContainer = menu.querySelector(".dd-options-list") || menu;
+    listContainer.innerHTML = "";
+    if (filtered.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "dd-no-results";
+      empty.textContent = "No matches";
+      listContainer.appendChild(empty);
+      return;
+    }
+    for (const o of filtered) {
       const opt = document.createElement("button");
       opt.type = "button";
       opt.className = "dd-option";
@@ -181,12 +195,50 @@ function buildDropdown(rootId, options, value, onChange, { onOpen } = {}) {
       }
       opt.addEventListener("click", () => {
         value = o.value;
+        filterText = "";
         root.dataset.open = "false";
         render();
         onChange(o.value);
       });
-      menu.appendChild(opt);
+      listContainer.appendChild(opt);
     }
+  }
+
+  function getFiltered() {
+    if (!filterText) return options;
+    const q = filterText.toLowerCase();
+    return options.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
+    );
+  }
+
+  function render() {
+    const cur = options.find((o) => o.value === value);
+    labelEl.textContent = cur ? cur.label : "Select model";
+    menu.innerHTML = "";
+    filterText = "";
+
+    if (shouldShowSearch()) {
+      const searchWrap = document.createElement("div");
+      searchWrap.className = "dd-search-wrap";
+      searchInput = document.createElement("input");
+      searchInput.type = "text";
+      searchInput.className = "dd-search";
+      searchInput.placeholder = "Search models…";
+      searchInput.addEventListener("input", (e) => {
+        filterText = e.target.value;
+        renderOptions(getFiltered());
+      });
+      searchInput.addEventListener("mousedown", (e) => e.stopPropagation());
+      searchWrap.appendChild(searchInput);
+      menu.appendChild(searchWrap);
+    }
+
+    const listContainer = document.createElement("div");
+    listContainer.className = "dd-options-list";
+    menu.appendChild(listContainer);
+
+    renderOptions(options);
   }
 
   button.addEventListener("click", (e) => {
@@ -194,7 +246,12 @@ function buildDropdown(rootId, options, value, onChange, { onOpen } = {}) {
     if (button.disabled) return;
     const opening = root.dataset.open !== "true";
     root.dataset.open = opening ? "true" : "false";
-    if (opening && onOpen) onOpen();
+    if (opening) {
+      if (onOpen) onOpen();
+      setTimeout(() => {
+        if (searchInput && shouldShowSearch()) searchInput.focus();
+      }, 0);
+    }
   });
 
   document.addEventListener("mousedown", (e) => {
@@ -2576,6 +2633,7 @@ function wire() {
       saveModelAndKey();
     },
     {
+      searchable: true,
       onOpen: () => {
         if (SIMPLE_PROVIDER_FETCH_CONFIG[state.provider]) fetchModelsForSimpleProvider();
       },
