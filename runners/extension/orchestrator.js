@@ -7,6 +7,13 @@ import {
   clearRetryLocate,
 } from "./state.js";
 import { callLlm } from "./llm.js";
+import {
+  generateNextAdaptiveTurn,
+  judgeResponse,
+  createModel,
+  setEnvProvider,
+  PROVIDER_ENV_VARS,
+} from "./dist/core.bundle.js";
 import { getLlmProfile, assertLlmCfg } from "./config.js";
 import { loadAttackCatalog, evaluatorFromCatalog, assertEvaluatorInSuite } from "./catalog.js";
 import {
@@ -25,12 +32,7 @@ import {
   actVerifyInputVisible,
 } from "./domActions.js";
 import { snapshotCurrentResponse, extractResponse } from "./responseExtractor.js";
-import {
-  aiPickInputInFrame,
-  llmShortenMessage,
-  llmNextUserMessage,
-  judgeConversationFinal,
-} from "./llmPlanner.js";
+import { aiPickInputInFrame, llmShortenMessage } from "./llmUiActions.js";
 
 export async function sleepInterruptible(ms) {
   const step = 250;
@@ -40,6 +42,29 @@ export async function sleepInterruptible(ms) {
     await sleep(chunk);
     left -= chunk;
   }
+}
+
+/** Build a core LanguageModel from an extension LLM profile. */
+function buildModelFromProfile(profile) {
+  const envVar = PROVIDER_ENV_VARS[profile.provider] ?? "OPFOR_API_KEY";
+  setEnvProvider((name) => (name === envVar ? profile.apiKey : undefined));
+  return createModel({
+    provider: profile.provider,
+    model: profile.model,
+    apiKeyEnv: envVar,
+    baseURL: profile.baseUrl || undefined,
+  });
+}
+
+/** Map core JudgeResult to the extension's judgment schema. */
+function adaptJudgeResult(coreResult) {
+  return {
+    verdict: coreResult.verdict === "ERROR" ? "UNKNOWN" : coreResult.verdict,
+    summary: coreResult.reasoning,
+    findings: coreResult.evidence ? [{ text: coreResult.evidence }] : [],
+    confidence: coreResult.confidence,
+    score: coreResult.score,
+  };
 }
 
 /**
@@ -227,6 +252,8 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
   let attackerCfg;
   let judgeCfg;
   let readerCfg;
+  let attackerModel;
+  let judgeModel;
   try {
     attackerCfg = await getLlmProfile("attacker");
     judgeCfg = await getLlmProfile("judge");
@@ -234,6 +261,8 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
     assertLlmCfg(attackerCfg, { kind: "Attacker" });
     assertLlmCfg(judgeCfg, { kind: "Judge" });
     assertLlmCfg(readerCfg, { kind: "HTML reader" });
+    attackerModel = buildModelFromProfile(attackerCfg);
+    judgeModel = buildModelFromProfile(judgeCfg);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     try {
@@ -261,7 +290,7 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
   let siteSnapshot = "";
   let suiteId = "";
   let attackObjective = "";
-  let businessUseCase = "";
+  let businessUseCase;
   let judgeHint = "";
   /** @type {Record<string, unknown> | null} */
   let evaluatorSnapshot = null;
@@ -490,15 +519,27 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
       }
 
       let detectedMaxLength = knownMaxLength || undefined;
-      let userMessage = await llmNextUserMessage(attackerCfg, {
-        evaluatorSnapshot,
-        suiteLabel,
-        siteUrl: tab.url || "",
-        siteSnapshot,
-        transcript,
-        maxMessageLength: detectedMaxLength,
-        attackObjective,
-        businessUseCase,
+      let userMessage = await generateNextAdaptiveTurn({
+        history: transcript,
+        attack: {
+          id: evaluatorSnapshot.id,
+          evaluatorId: evaluatorSnapshot.id,
+          evaluatorName: evaluatorSnapshot.name,
+          severity: evaluatorSnapshot.severity || "medium",
+          ref: evaluatorSnapshot.ref || "",
+          description: evaluatorSnapshot.description || "",
+          passCriteria: evaluatorSnapshot.passCriteria || "",
+          failCriteria: evaluatorSnapshot.failCriteria || "",
+          patternName: evaluatorSnapshot.name,
+          turns: maxRounds,
+        },
+        patterns: evaluatorSnapshot.patterns || [],
+        target: {
+          name: tab.url || siteUrl || "target",
+          description: tab.url || siteUrl || "target",
+        },
+        model: attackerModel,
+        maxLength: detectedMaxLength,
       });
 
       if (state.OPFOR_STOP) {
@@ -771,12 +812,29 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
     let judgment;
     if (transcript.length >= 2) {
       try {
-        judgment = await judgeConversationFinal(judgeCfg, {
-          evaluatorSnapshot,
-          transcript,
-          attackObjective,
-          judgeHint,
-        });
+        const lastUser = [...transcript].reverse().find((t) => t.role === "user")?.content || "";
+        const lastAssistant =
+          [...transcript].reverse().find((t) => t.role === "assistant")?.content || "";
+        const combinedHint = [
+          attackObjective ? `Attack objective: ${attackObjective}` : "",
+          judgeHint || "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        judgment = adaptJudgeResult(
+          await judgeResponse(
+            evaluatorSnapshot,
+            lastUser,
+            lastAssistant,
+            judgeModel,
+            undefined,
+            transcript,
+            {
+              patternName: evaluatorSnapshot?.name,
+              judgeHint: combinedHint || undefined,
+            }
+          )
+        );
       } catch (judgeErr) {
         const errMsg = judgeErr instanceof Error ? judgeErr.message : String(judgeErr);
         if (errMsg === "Run stopped." || state.OPFOR_STOP) throw judgeErr;
@@ -796,12 +854,29 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
       let stoppedJudgment = judgment;
       if (!stoppedJudgment && transcript.length >= 2 && judgeCfg?.enabled) {
         try {
-          stoppedJudgment = await judgeConversationFinal(judgeCfg, {
-            evaluatorSnapshot,
-            transcript,
-            attackObjective,
-            judgeHint,
-          });
+          const lastUser = [...transcript].reverse().find((t) => t.role === "user")?.content || "";
+          const lastAssistant =
+            [...transcript].reverse().find((t) => t.role === "assistant")?.content || "";
+          const combinedHint = [
+            attackObjective ? `Attack objective: ${attackObjective}` : "",
+            judgeHint || "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+          stoppedJudgment = adaptJudgeResult(
+            await judgeResponse(
+              evaluatorSnapshot,
+              lastUser,
+              lastAssistant,
+              judgeModel,
+              undefined,
+              transcript,
+              {
+                patternName: evaluatorSnapshot?.name,
+                judgeHint: combinedHint || undefined,
+              }
+            )
+          );
         } catch {
           stoppedJudgment = {
             verdict: "UNKNOWN",
@@ -882,12 +957,29 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
       let stoppedJudgment;
       if (transcript?.length >= 2 && evaluatorSnapshot && judgeCfg?.enabled) {
         try {
-          stoppedJudgment = await judgeConversationFinal(judgeCfg, {
-            evaluatorSnapshot,
-            transcript,
-            attackObjective,
-            judgeHint,
-          });
+          const lastUser = [...transcript].reverse().find((t) => t.role === "user")?.content || "";
+          const lastAssistant =
+            [...transcript].reverse().find((t) => t.role === "assistant")?.content || "";
+          const combinedHint = [
+            attackObjective ? `Attack objective: ${attackObjective}` : "",
+            judgeHint || "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+          stoppedJudgment = adaptJudgeResult(
+            await judgeResponse(
+              evaluatorSnapshot,
+              lastUser,
+              lastAssistant,
+              judgeModel,
+              undefined,
+              transcript,
+              {
+                patternName: evaluatorSnapshot?.name,
+                judgeHint: combinedHint || undefined,
+              }
+            )
+          );
         } catch {
           stoppedJudgment = {
             verdict: "UNKNOWN",
@@ -939,12 +1031,29 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
       let errorJudgment;
       if (transcript?.length >= 2 && evaluatorSnapshot && judgeCfg?.enabled) {
         try {
-          errorJudgment = await judgeConversationFinal(judgeCfg, {
-            evaluatorSnapshot,
-            transcript,
-            attackObjective,
-            judgeHint,
-          });
+          const lastUser = [...transcript].reverse().find((t) => t.role === "user")?.content || "";
+          const lastAssistant =
+            [...transcript].reverse().find((t) => t.role === "assistant")?.content || "";
+          const combinedHint = [
+            attackObjective ? `Attack objective: ${attackObjective}` : "",
+            judgeHint || "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+          errorJudgment = adaptJudgeResult(
+            await judgeResponse(
+              evaluatorSnapshot,
+              lastUser,
+              lastAssistant,
+              judgeModel,
+              undefined,
+              transcript,
+              {
+                patternName: evaluatorSnapshot?.name,
+                judgeHint: combinedHint || undefined,
+              }
+            )
+          );
         } catch {}
       }
       if (errorJudgment && transcript?.length >= 2) {

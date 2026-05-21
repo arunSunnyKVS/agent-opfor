@@ -55,7 +55,9 @@ opfor/
 ├── extension/                   # npm workspace — browser extension (MV3, no build step)
 │   ├── service_worker.js        # Entry point — message routing only; imports from modules below
 │   ├── orchestrator.js          # Main run loop: locate → attack → extract → reset → judge
-│   ├── llmPlanner.js            # All LLM prompts (frame selection, attack generation, judging)
+│   ├── llmUiActions.js          # DOM-specific LLM helpers (input picker, UI planner, message shortener)
+│   ├── domTarget.js             # Adapter that exposes the DOM send/extract path as a core AgentTarget
+│   ├── dist/core.bundle.js      # esbuild bundle of @opfor/core/browser (attack + judge engine)
 │   ├── frameDiscovery.js        # Frame collection, scoring, and chat-frame selection
 │   ├── domActions.js            # chrome.scripting wrappers (send, click, verify, vendor APIs)
 │   ├── responseExtractor.js     # Smart three-phase polling extractor for bot responses
@@ -129,27 +131,28 @@ npm run format:check             # prettier --check
 
 ## Key files
 
-| File                                    | Purpose                                                                                 |
-| --------------------------------------- | --------------------------------------------------------------------------------------- |
-| `core/src/config/types.ts`              | All TypeScript types for configs, attacks, results                                      |
-| `core/src/config/schema.ts`             | Zod schemas — single source of truth for validation                                     |
-| `core/src/config/skillsLayout.ts`       | `getOpforSetupRoot()` — resolves `skills/opfor-setup/` path at runtime from any context |
-| `core/src/config/loadSkillCatalog.ts`   | Reads evaluator metadata and suite lists from `.md` frontmatter                         |
-| `core/src/lib/agent.ts`                 | HTTP attack dispatch, `callTargetHttp()`                                                |
-| `core/src/lib/localScriptTarget.ts`     | Local script target (stdin/stdout) dispatch                                             |
-| `core/src/mcp-client/createClient.ts`   | MCP client factory — `{ client, close }` for stdio or SSE                               |
-| `core/src/evaluators/judge.ts`          | LLM-as-judge: response + criteria → PASS/FAIL + rationale                               |
-| `core/src/evaluators/parseEvaluator.ts` | Loads evaluator `.md`, parses YAML frontmatter → `EvaluatorSpec`                        |
-| `core/src/attacks/generatePlan.ts`      | Calls LLM to fill `{{placeholder}}` variables in attack templates                       |
-| `core/src/run/executeAttack.ts`         | Single attack execution — dispatch + judge                                              |
-| `core/src/report/agentReport.ts`        | Produces `report.html` and `report.json`                                                |
-| `cli/src/commands/setup.ts`             | Interactive setup wizard                                                                |
-| `cli/src/commands/generate.ts`          | Non-interactive attack generation (`opfor generate`)                                    |
-| `cli/src/commands/execute.ts`           | Execute entrypoint (`opfor execute`)                                                    |
-| `mcp/src/index.ts`                      | MCP server: registers `opfor_list_evaluators`, `opfor_setup`, `opfor_execute` tools     |
-| `extension/service_worker.js`           | Extension entry point — message routing; imports from focused ES modules                |
-| `extension/orchestrator.js`             | Full adaptive run loop (locate chat → multi-turn attack → judge)                        |
-| `extension/llmPlanner.js`               | All LLM prompts used by the extension (attacker, judge, frame reader)                   |
+| File                                    | Purpose                                                                                   |
+| --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `core/src/config/types.ts`              | All TypeScript types for configs, attacks, results                                        |
+| `core/src/config/schema.ts`             | Zod schemas — single source of truth for validation                                       |
+| `core/src/config/skillsLayout.ts`       | `getOpforSetupRoot()` — resolves `skills/opfor-setup/` path at runtime from any context   |
+| `core/src/config/loadSkillCatalog.ts`   | Reads evaluator metadata and suite lists from `.md` frontmatter                           |
+| `core/src/lib/agent.ts`                 | HTTP attack dispatch, `callTargetHttp()`                                                  |
+| `core/src/lib/localScriptTarget.ts`     | Local script target (stdin/stdout) dispatch                                               |
+| `core/src/mcp-client/createClient.ts`   | MCP client factory — `{ client, close }` for stdio or SSE                                 |
+| `core/src/evaluators/judge.ts`          | LLM-as-judge: response + criteria → PASS/FAIL + rationale                                 |
+| `core/src/evaluators/parseEvaluator.ts` | Loads evaluator `.md`, parses YAML frontmatter → `EvaluatorSpec`                          |
+| `core/src/attacks/generatePlan.ts`      | Calls LLM to fill `{{placeholder}}` variables in attack templates                         |
+| `core/src/run/executeAttack.ts`         | Single attack execution — dispatch + judge                                                |
+| `core/src/report/agentReport.ts`        | Produces `report.html` and `report.json`                                                  |
+| `cli/src/commands/setup.ts`             | Interactive setup wizard                                                                  |
+| `cli/src/commands/generate.ts`          | Non-interactive attack generation (`opfor generate`)                                      |
+| `cli/src/commands/execute.ts`           | Execute entrypoint (`opfor execute`)                                                      |
+| `mcp/src/index.ts`                      | MCP server: registers `opfor_list_evaluators`, `opfor_setup`, `opfor_execute` tools       |
+| `extension/service_worker.js`           | Extension entry point — message routing; imports from focused ES modules                  |
+| `extension/orchestrator.js`             | Full adaptive run loop (locate chat → multi-turn attack → judge)                          |
+| `extension/llmUiActions.js`             | DOM-specific LLM helpers; attack and judge prompts now live in `@opfor/core`              |
+| `extension/dist/core.bundle.js`         | Browser bundle of `@opfor/core` — supplies `generateNextAdaptiveTurn` and `judgeResponse` |
 
 ---
 

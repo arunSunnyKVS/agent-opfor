@@ -6,9 +6,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:catalog": "node scripts/build-catalog.mjs"
+    "build:catalog": "node scripts/build-catalog.mjs",
+    "build:core": "node scripts/bundle-core.mjs"
   },
   "dependencies": {
     "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
   }
 }

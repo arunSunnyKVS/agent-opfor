@@ -2,7 +2,7 @@ import { sleep } from "./utils.js";
 import { state } from "./state.js";
 import { actClickSelector, actVerifyInputVisible, preparePageForChat } from "./domActions.js";
 import { collectFrames } from "./frameDiscovery.js";
-import { aiUiNextAction } from "./llmPlanner.js";
+import { aiUiNextAction } from "./llmUiActions.js";
 
 /**
  * Locate an open chat widget input using accessibility-tree-first LLM actions.

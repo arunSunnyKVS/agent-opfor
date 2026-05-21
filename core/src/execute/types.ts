@@ -1,7 +1,7 @@
 import type { LlmConfig, TelemetryConfig } from "../config/types.js";
 import type { JudgeResult } from "../run/types.js";
 
-export type Effort = "medium" | "hard";
+export type Effort = "adaptive" | "comprehensive";
 
 // ---------------------------------------------------------------------------
 // Target configs
@@ -87,7 +87,6 @@ export interface AgentTurnRecord {
   turnIndex: number;
   prompt: string;
   response: string;
-  judge?: JudgeResult;
 }
 
 export interface McpTurnRecord {
@@ -97,7 +96,6 @@ export interface McpTurnRecord {
   toolArguments: Record<string, unknown>;
   response: string;
   toolError?: string;
-  judge?: JudgeResult;
 }
 
 export type TurnRecord = AgentTurnRecord | McpTurnRecord;
