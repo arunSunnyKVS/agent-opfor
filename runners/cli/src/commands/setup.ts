@@ -1,94 +1,342 @@
 import type { Command } from "commander";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
-import { select } from "@inquirer/prompts";
-import { buildEmptyMcpSection, collectMcpSectionInteractive } from "./mcp/init.js";
-import { buildEmptyAgentSetupConfig, collectAgentSetupConfigInteractive } from "./agent/wizard.js";
-import { loadEnvFromFlag } from "../lib/env.js";
-import { ensureOpforDirs, newConfigPath, newId } from "../lib/artifacts.js";
-import type { UnifiedMode, UnifiedConfigFileV1 } from "../lib/unifiedConfig.js";
+import { input, select, checkbox, password, confirm } from "@inquirer/prompts";
+import { log } from "../../../../core/dist/lib/logger.js";
+import { loadSkillCatalog } from "../../../../core/dist/config/loadSkillCatalog.js";
+import {
+  PROVIDERS,
+  PROVIDER_CHOICES,
+  type LlmConfig,
+  type ProviderName,
+} from "../../../../core/dist/config/types.js";
+import { PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "../../../../core/dist/providers/factory.js";
+import type {
+  RunConfig,
+  UnifiedTargetConfig,
+  AgentTargetConfig,
+  McpTargetConfig,
+  EvaluatorSelection,
+  Effort,
+} from "../../../../core/dist/execute/types.js";
 
-export async function runUnifiedSetup(opts: {
-  mcp?: boolean;
-  agent?: boolean;
-  empty?: boolean;
-  env?: string;
-  out?: string;
-}): Promise<string> {
-  if (opts.env) loadEnvFromFlag(opts.env);
-  await ensureOpforDirs();
-
-  const wantMcp = Boolean(opts.mcp);
-  const wantAgent = Boolean(opts.agent);
-
-  let finalWantMcp = wantMcp;
-  let finalWantAgent = wantAgent;
-  if (!finalWantMcp && !finalWantAgent) {
-    const mode = await select<UnifiedMode>({
-      message: "What do you want to test?",
-      choices: [
-        { name: "MCP server (tools/list + tool calls)", value: "mcp" },
-        { name: "AI agent / LLM target (prompt-based attacks)", value: "agent" },
-      ],
-    });
-    finalWantMcp = mode === "mcp";
-    finalWantAgent = mode === "agent";
-  }
-
-  const configId = newId();
-  const createdAt = new Date().toISOString();
-
-  const empty = Boolean(opts.empty);
-  const mcpSection = finalWantMcp
-    ? empty
-      ? buildEmptyMcpSection()
-      : await collectMcpSectionInteractive()
-    : undefined;
-  const agentSection = finalWantAgent
-    ? empty
-      ? buildEmptyAgentSetupConfig()
-      : await collectAgentSetupConfigInteractive()
-    : undefined;
-
-  const outPath = path.resolve(opts.out || newConfigPath());
-  await mkdir(path.dirname(outPath), { recursive: true });
-
-  const cfg: UnifiedConfigFileV1 = {
-    configId,
-    createdAt,
-    mode: finalWantMcp && finalWantAgent ? "both" : finalWantMcp ? "mcp" : "agent",
-    ...(mcpSection ? { mcp: mcpSection as unknown as Record<string, unknown> } : {}),
-    ...(agentSection ? { agent: agentSection as unknown as Record<string, unknown> } : {}),
-  };
-
-  await writeFile(outPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
-  return outPath;
-}
+export const DEFAULT_CONFIG_PATH = "opfor.config.json";
 
 export function registerSetupCommand(program: Command): void {
   program
     .command("setup")
     .description(
-      "Interactive wizard — writes a timestamped config under .opfor/configs/.\n" +
-        "Use --mcp/--agent to skip mode prompt, or --empty for minimal configs."
+      "Interactive wizard — configure target, evaluators, and effort level; writes opfor.config.json"
     )
-    .option("--mcp", "Create an MCP config section")
-    .option("--agent", "Create an agent config section")
-    .option("--empty", "Write a minimal/empty config for the chosen mode(s)")
-    .option("--env <path>", "Load env vars from a dotenv file before running")
-    .option("--out <path>", "Override output path (advanced)")
-    .action(
-      async (opts: {
-        mcp?: boolean;
-        agent?: boolean;
-        empty?: boolean;
-        env?: string;
-        out?: string;
-      }) => {
-        const outPath = await runUnifiedSetup(opts);
-        console.log(`\nConfig written:\n  ${outPath}\n`);
-        const envArg = opts.env ? ` --env ${path.resolve(opts.env)}` : "";
-        console.log(`Next:\n  opfor generate --config ${outPath}${envArg}\n`);
+    .option("--config <path>", "Path to write config", DEFAULT_CONFIG_PATH)
+    .option("--env <path>", "Path to .env file to load")
+    .action(async (opts: { config: string; env?: string }) => {
+      if (opts.env) {
+        const { config: loadDotenv } = await import("dotenv");
+        loadDotenv({ path: path.resolve(opts.env) });
       }
+
+      log.info("\nOpfor Setup — configure your red team run");
+      log.info("─".repeat(50));
+
+      const config = await runSetupWizard();
+      const outPath = path.resolve(opts.config);
+      await writeFile(outPath, JSON.stringify(config, null, 2), "utf8");
+
+      log.success(`\nConfig written → ${outPath}`);
+      log.info(`Next: opfor execute --config ${outPath}`);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Wizard
+// ---------------------------------------------------------------------------
+
+async function runSetupWizard(): Promise<RunConfig> {
+  const attackLlm = await collectLlmConfig("Attack LLM (generates attacks)");
+
+  const separateJudge = await confirm({
+    message: "Use a separate LLM for judging? (default: reuse attack LLM)",
+    default: false,
+  });
+  const judgeLlm = separateJudge
+    ? await collectLlmConfig("Judge LLM (scores responses)")
+    : undefined;
+
+  const targetKind = await select<"agent" | "mcp">({
+    message: "\nTarget type",
+    choices: [
+      { name: "AI agent / chatbot  (HTTP endpoint or local script)", value: "agent" },
+      { name: "MCP server  (stdio or HTTP/SSE transport)", value: "mcp" },
+    ],
+  });
+
+  const target: UnifiedTargetConfig =
+    targetKind === "agent" ? await collectAgentTarget() : await collectMcpTarget();
+
+  const selection = await collectEvaluatorSelection();
+
+  const effort = await select<Effort>({
+    message: "\nEffort level",
+    choices: [
+      {
+        name: "Medium — 1 generic attack per evaluator (fast, broad coverage)",
+        value: "medium",
+      },
+      {
+        name: "Hard   — 1 attack per named test pattern per evaluator (thorough)",
+        value: "hard",
+      },
+    ],
+  });
+
+  const multiTurn = await confirm({
+    message: "Enable multi-turn? (each attack gets follow-up escalation turns)",
+    default: false,
+  });
+  let turns = 1;
+  if (multiTurn) {
+    const raw = await input({
+      message: "Turns per attack (2–10)",
+      default: "3",
+      validate: (v) => {
+        const n = parseInt(v, 10);
+        return n >= 2 && n <= 10 ? true : "Enter a number between 2 and 10";
+      },
+    });
+    turns = parseInt(raw, 10);
+  }
+
+  return { target, selection, attackLlm, judgeLlm, effort, turns };
+}
+
+// ---------------------------------------------------------------------------
+// LLM config
+// ---------------------------------------------------------------------------
+
+async function collectLlmConfig(label: string): Promise<LlmConfig> {
+  log.info(`\n${label}`);
+
+  const provider = await select<ProviderName>({
+    message: "Provider",
+    choices: PROVIDER_CHOICES,
+  });
+
+  const defaultModel = PROVIDER_DEFAULTS[provider];
+  const model = await input({
+    message: "Model",
+    default: defaultModel || undefined,
+    validate: (v) => (v.trim() ? true : "Model name is required"),
+  });
+
+  const defaultEnvVar = PROVIDER_ENV_VARS[provider];
+  const apiKeyEnv = await input({
+    message: "API key env var name",
+    default: defaultEnvVar,
+    validate: (v) => (v.trim() ? true : "Env var name is required"),
+  });
+
+  let baseURL: string | undefined;
+  if (provider === PROVIDERS.AZURE || provider === PROVIDERS.OPENAI_COMPATIBLE) {
+    baseURL = await input({
+      message: "Base URL (required for this provider)",
+      validate: (v) => (v.trim() ? true : "Base URL is required"),
+    });
+  }
+
+  return { provider, model: model.trim(), apiKeyEnv: apiKeyEnv.trim(), baseURL };
+}
+
+// ---------------------------------------------------------------------------
+// Agent target
+// ---------------------------------------------------------------------------
+
+async function collectAgentTarget(): Promise<AgentTargetConfig> {
+  log.info("\nAgent target");
+
+  const name = await input({
+    message: "Target name",
+    validate: (v) => (v.trim() ? true : "Required"),
+  });
+  const description = await input({
+    message: "Target description (what does this AI system do?)",
+    validate: (v) => (v.trim() ? true : "Required"),
+  });
+
+  const type = await select<"http-endpoint" | "local-script">({
+    message: "Target type",
+    choices: [
+      { name: "HTTP endpoint", value: "http-endpoint" },
+      { name: "Local script (Node.js or Python — stdin/stdout JSON)", value: "local-script" },
+    ],
+  });
+
+  if (type === "local-script") {
+    const scriptPath = await input({
+      message: "Script path (.js, .mjs, or .py)",
+      validate: (v) => (v.trim() ? true : "Required"),
+    });
+    return {
+      kind: "agent",
+      name: name.trim(),
+      description: description.trim(),
+      type,
+      scriptPath: scriptPath.trim(),
+    };
+  }
+
+  const endpoint = await input({
+    message: "Endpoint URL",
+    validate: (v) => {
+      try {
+        new URL(v.trim());
+        return true;
+      } catch {
+        return "Enter a valid URL";
+      }
+    },
+  });
+
+  const requestFormat = await select<"auto" | "openai" | "json">({
+    message: "Request format",
+    choices: [
+      { name: "Auto (try OpenAI chat completions, fall back to { prompt })", value: "auto" },
+      { name: "OpenAI chat completions", value: "openai" },
+      { name: 'Generic JSON  { "prompt": "..." }', value: "json" },
+    ],
+  });
+
+  const hasApiKey = await confirm({
+    message: "Does the target require an API key?",
+    default: false,
+  });
+  const targetApiKey = hasApiKey ? await password({ message: "API key value" }) : undefined;
+
+  const hasSession = await confirm({
+    message: "Inject a session ID per attack for multi-turn state tracking?",
+    default: false,
+  });
+  const sessionIdField = hasSession
+    ? await input({ message: "Session ID field name in request body", default: "session_id" })
+    : undefined;
+
+  return {
+    kind: "agent",
+    name: name.trim(),
+    description: description.trim(),
+    type,
+    endpoint: endpoint.trim(),
+    requestFormat,
+    targetApiKey,
+    sessionIdField,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// MCP target
+// ---------------------------------------------------------------------------
+
+async function collectMcpTarget(): Promise<McpTargetConfig> {
+  log.info("\nMCP target");
+
+  const name = await input({
+    message: "Target name",
+    validate: (v) => (v.trim() ? true : "Required"),
+  });
+
+  const transport = await select<"stdio" | "url">({
+    message: "Transport",
+    choices: [
+      { name: "stdio — start a local process", value: "stdio" },
+      { name: "url  — connect to a running HTTP/SSE server", value: "url" },
+    ],
+  });
+
+  if (transport === "url") {
+    const url = await input({
+      message: "Server URL",
+      validate: (v) => {
+        try {
+          new URL(v.trim());
+          return true;
+        } catch {
+          return "Enter a valid URL";
+        }
+      },
+    });
+    return { kind: "mcp", name: name.trim(), transport, url: url.trim() };
+  }
+
+  const command = await input({
+    message: "Command (e.g. node dist/server.js  or  python server.py)",
+    validate: (v) => (v.trim() ? true : "Required"),
+  });
+
+  const argsRaw = await input({
+    message: "Additional args (space-separated, blank = none)",
+    default: "",
+  });
+  const args = argsRaw.trim() ? argsRaw.trim().split(/\s+/) : [];
+
+  const hasEnv = await confirm({
+    message: "Set env vars for the MCP server process?",
+    default: false,
+  });
+  let env: Record<string, string> | undefined;
+  if (hasEnv) {
+    const envRaw = await input({
+      message: "KEY=VALUE pairs, comma-separated (e.g. PORT=3000,DEBUG=true)",
+    });
+    env = Object.fromEntries(
+      envRaw
+        .split(",")
+        .filter((s) => s.includes("="))
+        .map((pair) => {
+          const eq = pair.indexOf("=");
+          return [pair.slice(0, eq).trim(), pair.slice(eq + 1).trim()];
+        })
     );
+  }
+
+  return { kind: "mcp", name: name.trim(), transport, command: command.trim(), args, env };
+}
+
+// ---------------------------------------------------------------------------
+// Evaluator selection
+// ---------------------------------------------------------------------------
+
+async function collectEvaluatorSelection(): Promise<EvaluatorSelection> {
+  log.info("\nEvaluator selection");
+
+  const { suites, evaluators } = await loadSkillCatalog();
+
+  const mode = await select<"suite" | "evaluators">({
+    message: "Select by",
+    choices: [
+      { name: `Suite  (${suites.length} suites available)`, value: "suite" },
+      { name: "Individual evaluators", value: "evaluators" },
+    ],
+  });
+
+  if (mode === "suite") {
+    const suite = await select<string>({
+      message: "Suite",
+      choices: suites.map((s) => ({
+        name: `${s.name}  —  ${s.description}  (${s.evaluatorIds.length} evaluators)`,
+        value: s.id,
+      })),
+    });
+    return { mode: "suite", suite };
+  }
+
+  const ids = await checkbox<string>({
+    message: "Evaluators (space = toggle, enter = confirm)",
+    choices: evaluators.map((e) => ({
+      name: `[${e.severity.toUpperCase().padEnd(8)}] ${e.name}`,
+      value: e.id,
+    })),
+    validate: (v) => (v.length > 0 ? true : "Select at least one evaluator"),
+  });
+
+  return { mode: "evaluators", evaluators: ids };
 }

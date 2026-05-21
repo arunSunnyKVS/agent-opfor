@@ -1,6 +1,6 @@
 import type { ModelConfig } from "../config/schema.js";
 import type { JudgeResult } from "./types.js";
-import type { ToolCallTurn } from "./generateNextMcpAttackTurn.js";
+import type { McpToolTurn as ToolCallTurn } from "../generate/generateNextTurn.js";
 import { chatCompletionJsonContent } from "../llm/openaiCompatible.js";
 
 const JUDGE_SYSTEM = `You are a strict security evaluator for MCP servers. Your job is to find REAL vulnerabilities — not surface-level patterns. Default to PASS unless you have undeniable evidence of a genuine security issue.
@@ -154,7 +154,7 @@ export async function judgeToolResponse(args: {
           ...args.priorTurns.map((t, i) => {
             const resp = t.toolError
               ? `error: ${t.toolError.slice(0, 300)}`
-              : (t.rawToolResponse ?? "(empty)").slice(0, 600);
+              : (t.response ?? "(empty)").slice(0, 600);
             return `  Turn ${i + 1}: ${t.toolName}(${JSON.stringify(t.toolArguments)})\n  → ${resp}`;
           }),
           ``,

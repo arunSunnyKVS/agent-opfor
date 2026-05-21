@@ -1,128 +1,102 @@
 import type { Command } from "commander";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
-import { select } from "@inquirer/prompts";
-import { loadEnvFromFlag } from "../lib/env.js";
-import { ensureOpforDirs, OPFOR_REPORTS_DIR, newAttacksPath } from "../lib/artifacts.js";
-import { loadUnifiedConfigFile, type UnifiedMode } from "../lib/unifiedConfig.js";
-import { runUnifiedSetup } from "./setup.js";
-import { runMcpAttackPlan } from "./mcp/execute.js";
-import { runAgentAttacksFromFile } from "./agent/execute.js";
+import { log } from "../../../../core/dist/lib/logger.js";
+import { runAll } from "../../../../core/dist/execute/runAll.js";
+import { writeReport } from "../../../../core/dist/report/buildReport.js";
+import type { RunConfig, Effort } from "../../../../core/dist/execute/types.js";
+import { DEFAULT_CONFIG_PATH } from "./setup.js";
 
 export function registerExecuteCommand(program: Command): void {
   program
     .command("execute")
     .description(
-      "Execute an Opfor scan.\n" +
-        "If --attacks is provided, executes it. If only --config is provided, generates then executes. If neither, starts from setup."
+      "Generate attacks and run them against the configured target (requires setup first)"
     )
-    .option("--config <path>", "Path to a config file")
-    .option("--attacks <path>", "Path to an attacks/prompts JSON file")
-    .option("--env <path>", "Load env vars from a dotenv file before running")
-    .option("--mcp", "Force MCP mode (when ambiguous)")
-    .option("--agent", "Force agent mode (when ambiguous)")
-    .option(
-      "--out-dir <path>",
-      `Report output directory (default: ${OPFOR_REPORTS_DIR})`,
-      OPFOR_REPORTS_DIR
-    )
+    .option("--config <path>", "Path to opfor.config.json", DEFAULT_CONFIG_PATH)
+    .option("--effort <level>", "Override effort level: medium | hard")
+    .option("--turns <n>", "Override turns per attack (1 = single turn)")
+    .option("--output <dir>", "Directory for HTML + JSON reports", ".")
+    .option("--env <path>", "Path to .env file to load")
     .action(
       async (opts: {
-        config?: string;
-        attacks?: string;
+        config: string;
+        effort?: string;
+        turns?: string;
+        output: string;
         env?: string;
-        mcp?: boolean;
-        agent?: boolean;
-        outDir?: string;
       }) => {
-        if (opts.env) loadEnvFromFlag(opts.env);
-        await ensureOpforDirs();
-
-        const forcedMode: UnifiedMode | null = opts.mcp ? "mcp" : opts.agent ? "agent" : null;
-
-        let attacksPath = opts.attacks ? path.resolve(opts.attacks) : "";
-        let configPath = opts.config ? path.resolve(opts.config) : "";
-
-        if (!attacksPath && !configPath) {
-          configPath = await runUnifiedSetup({ env: opts.env });
+        if (opts.env) {
+          const { config: loadDotenv } = await import("dotenv");
+          loadDotenv({ path: path.resolve(opts.env) });
         }
 
-        // If we only have a config, attempt to find attacks for it; otherwise generate.
-        if (!attacksPath && configPath) {
-          const cfg = await loadUnifiedConfigFile(configPath);
+        const configPath = path.resolve(opts.config);
+        let runConfig: RunConfig;
 
-          const { runMcpGenerateAttackPlan } = await import("./mcp/setup.js");
-          const { generateAgentAttacksFromConfig } = await import("./agent/setup.js");
+        try {
+          const raw = await readFile(configPath, "utf8");
+          runConfig = JSON.parse(raw) as RunConfig;
+        } catch {
+          log.error(`Cannot read config at ${configPath}. Run \`opfor setup\` first.`);
+          process.exitCode = 1;
+          return;
+        }
 
-          let mode: UnifiedMode;
-          if (forcedMode) mode = forcedMode;
-          else if (cfg.mode === "mcp" || cfg.mode === "agent") mode = cfg.mode;
-          else if (cfg.mcp && !cfg.agent) mode = "mcp";
-          else if (cfg.agent && !cfg.mcp) mode = "agent";
-          else {
-            mode = await select<UnifiedMode>({
-              message: "Config contains both MCP and agent settings. Which mode should we run?",
-              choices: [
-                { name: "MCP", value: "mcp" },
-                { name: "Agent", value: "agent" },
-              ],
-            });
+        // CLI overrides
+        if (opts.effort) {
+          const eff = opts.effort.trim().toLowerCase() as Effort;
+          if (eff !== "medium" && eff !== "hard") {
+            log.error("--effort must be 'medium' or 'hard'");
+            process.exitCode = 1;
+            return;
           }
-
-          attacksPath = path.resolve(newAttacksPath(cfg.configId));
-
-          if (mode === "mcp") {
-            await runMcpGenerateAttackPlan({
-              config: configPath,
-              out: attacksPath,
-              configId: cfg.configId,
-            });
-          } else {
-            await generateAgentAttacksFromConfig({
-              configPath,
-              outputPath: attacksPath,
-              configId: cfg.configId,
-            });
+          runConfig = { ...runConfig, effort: eff };
+        }
+        if (opts.turns) {
+          const n = parseInt(opts.turns, 10);
+          if (!Number.isFinite(n) || n < 1) {
+            log.error("--turns must be a positive integer");
+            process.exitCode = 1;
+            return;
           }
+          runConfig = { ...runConfig, turns: n };
         }
 
-        if (!attacksPath) {
-          throw new Error("No attacks file could be resolved or generated.");
+        log.info(`\nOpfor Execute`);
+        log.info(`  Target : ${runConfig.target.name} (${runConfig.target.kind})`);
+        log.info(`  Effort : ${runConfig.effort}`);
+        log.info(`  Turns  : ${runConfig.turns}`);
+        log.info(`  Attack : ${runConfig.attackLlm.provider}/${runConfig.attackLlm.model}`);
+        if (runConfig.judgeLlm) {
+          log.info(`  Judge  : ${runConfig.judgeLlm.provider}/${runConfig.judgeLlm.model}`);
         }
+        log.info("");
 
-        // Infer mode from attacks file content
-        const raw = await readFile(attacksPath, "utf8");
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        let mode: UnifiedMode | null =
-          forcedMode || (parsed.mode === "mcp" ? "mcp" : parsed.mode === "agent" ? "agent" : null);
+        const report = await runAll(runConfig, {
+          onProgress: (event) => {
+            if (event.type === "evaluator_start") {
+              log.info(`\n▶ ${event.evaluatorName}`);
+            } else if (event.type === "attack_done") {
+              const icon = event.verdict === "PASS" ? "✓" : event.verdict === "FAIL" ? "✗" : "⚠";
+              process.stdout.write(` ${icon}`);
+            }
+          },
+        });
 
-        if (!mode) {
-          // Heuristic: MCP plans have "attacks" and "suiteId" and "server"; agent prompts have "llm" and "target"
-          if (parsed.server && parsed.suiteId) mode = "mcp";
-          else if (parsed.llm && parsed.target) mode = "agent";
-        }
-        if (!mode) {
-          mode = await select<UnifiedMode>({
-            message: "Unable to infer mode from attacks file. Which mode should we run?",
-            choices: [
-              { name: "MCP", value: "mcp" },
-              { name: "Agent", value: "agent" },
-            ],
-          });
-        }
+        log.info("\n\nWriting report...");
+        const outputDir = path.resolve(opts.output);
+        const { html, json } = await writeReport(report, outputDir);
 
-        const resolvedOutDir = path.resolve(opts.outDir || OPFOR_REPORTS_DIR);
+        const { summary } = report;
+        log.info(
+          `\nResults: ${summary.passed} passed, ${summary.failed} failed, ${summary.errors} errors`
+        );
+        log.info(`Safety score: ${summary.safetyScore}%`);
+        log.success(`\nReport: ${html}`);
+        log.info(`   JSON: ${json}`);
 
-        if (mode === "mcp") {
-          await runMcpAttackPlan({ input: attacksPath, outDir: resolvedOutDir });
-        } else {
-          await runAgentAttacksFromFile({
-            input: attacksPath,
-            outputDir: resolvedOutDir,
-          });
-        }
-
-        process.exit(0);
+        if (summary.failed > 0) process.exitCode = 1;
       }
     );
 }
