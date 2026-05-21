@@ -17,6 +17,8 @@ export interface AgentSendOptions {
   sessionId?: string;
   propagation?: TelemetryPropagationConfig;
   runTraceOtel?: string;
+  /** Pre-generated per-attack trace id so all turns of a multi-turn attack share one trace. */
+  attackTraceId?: string;
   runId?: string;
   attackIndex?: number;
 }
@@ -84,7 +86,8 @@ async function callHttp(
   if (hasPropagation && prop) {
     const strategy = prop.traceIdStrategy ?? "per-attack";
     const otelHex =
-      strategy === "per-run" && options?.runTraceOtel ? options.runTraceOtel : newOtelTraceId();
+      options?.attackTraceId ??
+      (strategy === "per-run" && options?.runTraceOtel ? options.runTraceOtel : newOtelTraceId());
     propagationTraceId = otelHex;
     const extra = buildPropagatedHeaders(prop, {
       otelTraceHex: otelHex,

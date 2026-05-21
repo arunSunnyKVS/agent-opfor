@@ -16,6 +16,7 @@ import { createMcpTarget } from "../targets/mcpTarget.js";
 import { loadBuiltinEvaluator } from "../evaluators/parseEvaluator.js";
 import { loadSkillCatalog, resolveSuiteEvaluatorIds } from "../config/loadSkillCatalog.js";
 import { judgeResponse, errorJudge } from "../evaluators/judge.js";
+import type { JudgeObservabilityContext } from "../evaluators/judge.js";
 import {
   judgeToolResponse,
   sanitizeJudgeResult,
@@ -23,6 +24,9 @@ import {
 } from "../run/judge.js";
 import { createModel } from "../providers/factory.js";
 import type { LlmConfig } from "../config/types.js";
+import { getAdapter } from "../telemetry/adapter.js";
+import { runSetupTraceCuration } from "../telemetry/curation.js";
+import { newOtelTraceId } from "../lib/tracePropagation.js";
 import { log } from "../lib/logger.js";
 
 export interface RunAllOptions {
@@ -63,6 +67,10 @@ export async function runAll(
     log.info(`MCP target connected — ${tools.length} tool(s) available`);
   }
 
+  // Optional: pull real production traces and summarise them so attack
+  // generation can be grounded in actual usage patterns.
+  const traceContext = await curateTracesIfConfigured(config, attackModel, options?.outputDir);
+
   const evaluatorResults: EvaluatorResult[] = [];
 
   try {
@@ -82,7 +90,7 @@ export async function runAll(
         effort: config.effort,
         model: attackModel,
         turns: config.turns,
-        options: { tools },
+        options: { tools, traceContext },
       });
 
       log.info(`  ${attacks.length} attack(s) generated [effort: ${config.effort}]`);
@@ -95,7 +103,7 @@ export async function runAll(
 
         const result = isMcp
           ? await runMcpAttack(attack, mcpTarget!, judgeModel, config)
-          : await runAgentAttack(attack, config, attackModel, judgeModel);
+          : await runAgentAttack(attack, config, attackModel, judgeModel, attack.id);
 
         attackResults.push(result);
         notify({ type: "attack_done", attackId: attack.id, verdict: result.judge.verdict });
@@ -140,7 +148,8 @@ async function runAgentAttack(
   attack: AttackSpec,
   config: RunConfig,
   attackModel: LanguageModel,
-  judgeModel: LanguageModel
+  judgeModel: LanguageModel,
+  attackIndex: string
 ): Promise<AttackResult> {
   const target = createAgentTarget(config.target as import("./types.js").AgentTargetConfig);
   const turns: AgentTurnRecord[] = [];
@@ -148,13 +157,28 @@ async function runAgentAttack(
   let finalPrompt = attack.prompt ?? "";
   let finalResponse = "";
 
+  const propagation = config.telemetry?.propagation;
+  const hasPropagation =
+    Boolean(propagation?.headers && Object.keys(propagation.headers).length > 0) ||
+    Boolean(propagation?.traceIdBodyField?.trim());
+  // Share one trace id across every turn of this attack so observability
+  // backends group them into a single trace.
+  const attackTraceId =
+    hasPropagation && (propagation?.traceIdStrategy ?? "per-attack") === "per-attack"
+      ? newOtelTraceId()
+      : undefined;
+
   for (let t = 1; t <= attack.turns; t++) {
     const prompt =
       t === 1
         ? finalPrompt
         : await generateNextAgentTurn(history, attack.prompt ?? "", attackModel);
 
-    const response = await target.send(prompt);
+    const response = await target.send(prompt, {
+      propagation,
+      attackTraceId,
+      attackIndex: Number.isFinite(Number(attackIndex)) ? Number(attackIndex) : undefined,
+    });
 
     history.push({ role: "user", content: prompt });
     history.push({ role: "assistant", content: response });
@@ -163,6 +187,11 @@ async function runAgentAttack(
       finalPrompt = prompt;
       finalResponse = response;
     }
+
+    const isFinalTurn = t === attack.turns || isTargetError(response);
+    const judgeObs = isFinalTurn
+      ? await buildJudgeObservability(config, attackTraceId, response)
+      : undefined;
 
     const judge = await (async () => {
       if (isTargetError(response)) {
@@ -182,7 +211,7 @@ async function runAgentAttack(
         prompt,
         response,
         judgeModel,
-        undefined,
+        judgeObs,
         history.length > 2 ? history : undefined,
         { patternName: attack.patternName, judgeHint: attack.judgeHint }
       );
@@ -324,6 +353,56 @@ async function resolveEvaluatorIds(selection: RunConfig["selection"]): Promise<s
 
 function resolveModel(cfg: LlmConfig): LanguageModel {
   return createModel(cfg);
+}
+
+async function curateTracesIfConfigured(
+  config: RunConfig,
+  model: LanguageModel,
+  outputDir: string | undefined
+): Promise<string | undefined> {
+  const tel = config.telemetry;
+  if (!tel || !getAdapter(tel.provider)) return undefined;
+  log.info(`Fetching ${tel.provider} traces...`);
+  try {
+    const ctx = await runSetupTraceCuration({
+      telemetry: tel,
+      model,
+      targetName: config.target.name,
+      targetDescription: (config.target as { description?: string }).description ?? "",
+      outputDir: outputDir ?? process.cwd(),
+    });
+    if (ctx?.trim()) log.info(`✓ Traces analysed — attacks grounded in real usage`);
+    return ctx;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.warn(`Trace curation failed (continuing without grounding): ${msg}`);
+    return undefined;
+  }
+}
+
+async function buildJudgeObservability(
+  config: RunConfig,
+  attackTraceId: string | undefined,
+  finalResponse: string
+): Promise<JudgeObservabilityContext | undefined> {
+  const tel = config.telemetry;
+  if (!tel || !attackTraceId) return undefined;
+  const obs: JudgeObservabilityContext = { propagatedTraceId: attackTraceId };
+  const adapter = getAdapter(tel.provider);
+  if (adapter && tel.enrichJudgeFromTrace && !isTargetError(finalResponse)) {
+    log.info(`  → fetching ${tel.provider} trace for judge...`);
+    const traceJson =
+      (await adapter.fetchTraceForJudge(tel, attackTraceId, {
+        initialDelayMs: tel.traceFetchInitialDelayMs ?? 500,
+        maxAttempts: tel.traceFetchMaxAttempts ?? 5,
+        retryDelayMs: tel.traceFetchRetryDelayMs ?? 400,
+        maxChars: tel.enrichJudgeTraceJsonMaxChars ?? 40_000,
+      })) ?? undefined;
+    if (traceJson) obs.traceJson = traceJson;
+    const ok = traceJson && !traceJson.startsWith("[");
+    log.info(`  → trace ${ok ? "fetched ✓" : "not found ✗"}`);
+  }
+  return obs;
 }
 
 function resolveModelConfig(cfg: LlmConfig): import("../config/schema.js").ModelConfig {
