@@ -478,17 +478,20 @@ export async function executeAdaptiveRedTeamRun(sendResponse, message, resume) {
     // Build DomTarget adapter — handles send/extract/pause/stop/recovery
     const domTarget = createDomTarget(tab.id, best.frameId, plan, readerCfg, {
       waitMs,
-      onTurnDone: async (turnData) => {
-        const { transcript: newT, turns: newTL } = domTarget.getCollectedData();
-        const liveTrans = [...transcript, ...newT];
+      onUserSent: async ({ round, prompt }) => {
+        // Broadcast the user bubble immediately after send, before waiting for response.
         broadcastProgress({
           kind: "turn",
-          round: turnData.round,
+          round,
           role: "user",
-          content: turnData.userMessage,
+          content: prompt,
           suiteId,
           evaluatorId: evaluatorSnapshot?.id,
         });
+      },
+      onTurnDone: async (turnData) => {
+        const { transcript: newT, turns: newTL } = domTarget.getCollectedData();
+        const liveTrans = [...transcript, ...newT];
         broadcastProgress({
           kind: "turn",
           round: turnData.round,

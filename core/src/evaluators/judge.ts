@@ -138,7 +138,6 @@ export async function judgeResponse(
     model,
     system: JUDGE_SYSTEM,
     prompt: judgePrompt,
-    temperature: 0,
   });
 
   return parseJudgeOutput(result.text);

@@ -748,7 +748,9 @@ let progressActive = false;
 function handleProgress(message) {
   if (state.screen !== "running" && state.screen !== "awaitUser") return;
   progressActive = true;
-  stopCosmeticTicker();
+  // Only stop the cosmetic ticker when real turn data arrives — not on phase
+  // events, which fire early (before attack generation completes).
+  if (message.kind === "turn") stopCosmeticTicker();
   if (message.kind === "phase") {
     if (message.phase === "await_user") {
       state.awaitUserError = message.error || "Could not find chat widget";
