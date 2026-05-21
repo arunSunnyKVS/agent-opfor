@@ -5,9 +5,35 @@ import { clearRunStatus } from "./storage.js";
 import { pickChatFrameWithRetry, embeddedChatBoost } from "./frameDiscovery.js";
 import { preparePageForChat, actSendText } from "./domActions.js";
 import { callLlm } from "./llm.js";
+import {
+  judgeResponse,
+  createModel,
+  setEnvProvider,
+  PROVIDER_ENV_VARS,
+} from "./dist/core.bundle.js";
 import { resetChatSession, executeAdaptiveRedTeamRun } from "./orchestrator.js";
-import { judgeConversationFinal } from "./llmPlanner.js";
 import { persistPartialResult } from "./storage.js";
+
+function buildModelFromProfile(profile) {
+  const envVar = PROVIDER_ENV_VARS[profile.provider] ?? "OPFOR_API_KEY";
+  setEnvProvider((name) => (name === envVar ? profile.apiKey : undefined));
+  return createModel({
+    provider: profile.provider,
+    model: profile.model,
+    apiKeyEnv: envVar,
+    baseURL: profile.baseUrl || undefined,
+  });
+}
+
+function adaptJudgeResult(coreResult) {
+  return {
+    verdict: coreResult.verdict === "ERROR" ? "UNKNOWN" : coreResult.verdict,
+    summary: coreResult.reasoning,
+    findings: coreResult.evidence ? [{ text: coreResult.evidence }] : [],
+    confidence: coreResult.confidence,
+    score: coreResult.score,
+  };
+}
 
 // ── OPFOR_INJECT_SEND_HI ─────────────────────────────────────────────────────
 // Legacy single-shot handler: open chat, find input via AI, send "hi".
@@ -315,12 +341,27 @@ function handleMainMessages(message, sendResponse) {
           passCriteria: "",
           failCriteria: "",
         };
-        const judgment = await judgeConversationFinal(judgeCfg, {
-          evaluatorSnapshot,
-          transcript,
-          attackObjective: aoPartial || "",
-          judgeHint: jhPartial || "",
-        });
+        const judgeModel = buildModelFromProfile(judgeCfg);
+        const lastUser = [...transcript].reverse().find((t) => t.role === "user")?.content || "";
+        const lastAssistant =
+          [...transcript].reverse().find((t) => t.role === "assistant")?.content || "";
+        const combinedHint = [aoPartial ? `Attack objective: ${aoPartial}` : "", jhPartial || ""]
+          .filter(Boolean)
+          .join("\n");
+        const judgment = adaptJudgeResult(
+          await judgeResponse(
+            evaluatorSnapshot,
+            lastUser,
+            lastAssistant,
+            judgeModel,
+            undefined,
+            transcript,
+            {
+              patternName: evaluatorSnapshot?.name,
+              judgeHint: combinedHint || undefined,
+            }
+          )
+        );
         const result = {
           ok: true,
           completed: false,

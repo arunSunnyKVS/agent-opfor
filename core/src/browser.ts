@@ -2,17 +2,19 @@
 // that are reachable from a Chrome MV3 extension or any other non-Node runtime.
 //
 // What's IN: attacker prompt generation, multi-turn escalation, judge logic,
-// HTTP agent target, telemetry adapter factory, types, env/random shims.
+// LLM model factory, telemetry adapter factory, types, env/random shims.
 //
 // What's OUT (deliberately): anything that touches node:fs / node:child_process
-// or assumes a writable filesystem — buildReport, telemetry curation, the
-// disk-based skill/evaluator loaders, the local-script target, opforConfig.
-// The extension supplies evaluator data via its pre-built catalog.json and
-// writes its report through chrome.storage, not the disk-backed paths.
+// or assumes a writable filesystem — runAll (disk-based evaluator loaders),
+// createAgentTarget (local-script variant uses node:child_process), buildReport,
+// telemetry curation, opforConfig.
+// The extension supplies evaluator data via its pre-built catalog.json,
+// drives the attack loop itself, and writes reports through chrome.storage.
+//
+// runAll will be re-added once it accepts pre-loaded EvaluatorSpec[] directly
+// (planned for Phase C — no disk loader needed at that point).
 
-export { runAll } from "./execute/runAll.js";
 export type {
-  RunConfig,
   AttackSpec,
   AttackResult,
   EvaluatorResult,
@@ -32,13 +34,16 @@ export type {
   AttackContext,
 } from "./evaluators/judge.js";
 
-export { createAgentTarget, isTargetError, RATE_LIMITED_SENTINEL } from "./targets/agentTarget.js";
+export { isTargetError, RATE_LIMITED_SENTINEL } from "./targets/agentTarget.js";
 
-export { generateNextAgentTurn, generateNextMcpTurn } from "./generate/generateNextTurn.js";
+export { generateNextAdaptiveTurn, generateNextMcpTurn } from "./generate/generateNextTurn.js";
 export { generateAttacks } from "./generate/generateAttacks.js";
 
 export { setEnvProvider, getEnv } from "./lib/env.js";
 export { randomUUID, randomTraceHex } from "./lib/random.js";
 export { newOtelTraceId } from "./lib/tracePropagation.js";
+
+export { createModel, PROVIDER_ENV_VARS, PROVIDER_DEFAULTS } from "./providers/factory.js";
+export type { LlmConfig } from "./config/types.js";
 
 export { getAdapter } from "./telemetry/adapter.js";
