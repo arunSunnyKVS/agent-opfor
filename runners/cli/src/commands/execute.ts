@@ -1,10 +1,10 @@
 import type { Command } from "commander";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
-import { log } from "../../../../core/dist/lib/logger.js";
-import { runAll } from "../../../../core/dist/execute/runAll.js";
-import { writeReport } from "../../../../core/dist/report/buildReport.js";
-import type { RunConfig, Effort } from "../../../../core/dist/execute/types.js";
+import { log } from "@opfor/core/lib/logger.js";
+import { runAll } from "@opfor/core/execute/runAll.js";
+import { writeReport } from "@opfor/core/report/buildReport.js";
+import type { RunConfig, Effort } from "@opfor/core/execute/types.js";
 import { DEFAULT_CONFIG_PATH } from "./setup.js";
 
 export function registerExecuteCommand(program: Command): void {

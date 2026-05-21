@@ -10,11 +10,11 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { loadSkillCatalog } from "../../../core/dist/config/loadSkillCatalog.js";
-import { runAll } from "../../../core/dist/execute/runAll.js";
-import { writeReport } from "../../../core/dist/report/buildReport.js";
-import { PROVIDERS, type ProviderName } from "../../../core/dist/config/types.js";
-import type { RunConfig, Effort } from "../../../core/dist/execute/types.js";
+import { loadSkillCatalog } from "@opfor/core/config/loadSkillCatalog.js";
+import { runAll } from "@opfor/core/execute/runAll.js";
+import { writeReport } from "@opfor/core/report/buildReport.js";
+import { PROVIDERS, type ProviderName } from "@opfor/core/config/types.js";
+import type { RunConfig, Effort } from "@opfor/core/execute/types.js";
 
 const server = new McpServer({ name: "opfor", version: "0.1.0" });
 

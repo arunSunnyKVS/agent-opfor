@@ -2,15 +2,15 @@ import type { Command } from "commander";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { input, select, checkbox, password, confirm } from "@inquirer/prompts";
-import { log } from "../../../../core/dist/lib/logger.js";
-import { loadSkillCatalog } from "../../../../core/dist/config/loadSkillCatalog.js";
+import { log } from "@opfor/core/lib/logger.js";
+import { loadSkillCatalog } from "@opfor/core/config/loadSkillCatalog.js";
 import {
   PROVIDERS,
   PROVIDER_CHOICES,
   type LlmConfig,
   type ProviderName,
-} from "../../../../core/dist/config/types.js";
-import { PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "../../../../core/dist/providers/factory.js";
+} from "@opfor/core/config/types.js";
+import { PROVIDER_DEFAULTS, PROVIDER_ENV_VARS } from "@opfor/core/providers/factory.js";
 import type {
   RunConfig,
   UnifiedTargetConfig,
@@ -18,7 +18,7 @@ import type {
   McpTargetConfig,
   EvaluatorSelection,
   Effort,
-} from "../../../../core/dist/execute/types.js";
+} from "@opfor/core/execute/types.js";
 
 export const DEFAULT_CONFIG_PATH = "opfor.config.json";
 
