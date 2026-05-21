@@ -1,5 +1,5 @@
-// Adaptive multi-turn attacker prompt. Ported from
-// runners/extension/prompts/attacker-chat.md.
+// Adaptive multi-turn attacker prompt — single source of truth for the
+// agent-redteaming attacker across CLI, MCP, and extension runners.
 //
 // Trimmed for runner-agnostic use:
 //   - "SITE_URL" / "SANITIZED_SITE_SNAPSHOT" → replaced with "TARGET_DESCRIPTION"
