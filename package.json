@@ -1,5 +1,5 @@
 {
-  "name": "opfor-monorepo",
+  "name": "opfor",
   "version": "0.1.0",
   "description": "Opfor — security testing for AI agents and MCP servers (workspace root)",
   "license": "Apache-2.0",
@@ -23,6 +23,7 @@
   },
   "scripts": {
     "build": "tsc -b core runners/cli runners/mcp && npm run extension:catalog && npm run build:core --workspace=@opfor/extension",
+    "install:cli": "npm run build && npm install -g ./runners/cli",
     "test": "npm test --workspace=core",
     "typecheck": "tsc -b core runners/cli runners/mcp",
     "extension:catalog": "npm run build:catalog --workspace=@opfor/extension",
@@ -35,7 +36,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.12.4",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
