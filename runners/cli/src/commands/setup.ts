@@ -24,13 +24,33 @@ import type {
 } from "@opfor/core/execute/types.js";
 import { ensureOpforDirs, newConfigPath } from "../lib/artifacts.js";
 
-export const DEFAULT_CONFIG_PATH = "opfor.config.json";
+/**
+ * Run the setup wizard (or build an empty config) and write the result to disk.
+ * Shared by `opfor setup` and `opfor execute` (when invoked without `--config`).
+ */
+export async function runSetupAndWrite(opts?: {
+  configOutPath?: string;
+  hint?: "agent" | "mcp";
+  empty?: boolean;
+}): Promise<{ config: RunConfig; path: string }> {
+  log.info("\nOpfor Setup — configure your red team run");
+  log.info("─".repeat(50));
+
+  const config = opts?.empty ? await buildEmptyConfig(opts.hint) : await runSetupWizard(opts?.hint);
+
+  await ensureOpforDirs();
+  const outPath = path.resolve(opts?.configOutPath ?? newConfigPath());
+  await writeFile(outPath, JSON.stringify(config, null, 2), "utf8");
+
+  log.success(`\nConfig written → ${outPath}`);
+  return { config, path: outPath };
+}
 
 export function registerSetupCommand(program: Command): void {
   program
     .command("setup")
     .description(
-      "Interactive wizard — configure target, evaluators, and effort level; writes opfor.config.json"
+      "Interactive wizard — configure target, evaluators, and effort level; writes the config to .opfor/configs/"
     )
     .option("--config <path>", "Path to write config (default: .opfor/configs/<timestamped>.json)")
     .option("--env <path>", "Path to .env file to load")
@@ -50,23 +70,17 @@ export function registerSetupCommand(program: Command): void {
           loadDotenv({ path: path.resolve(opts.env), override: true });
         }
 
-        log.info("\nOpfor Setup — configure your red team run");
-        log.info("─".repeat(50));
-
         const hint: "agent" | "mcp" | undefined = opts.agent
           ? "agent"
           : opts.mcp
             ? "mcp"
             : undefined;
 
-        const config = opts.empty ? await buildEmptyConfig(hint) : await runSetupWizard(hint);
-
-        // Write to .opfor/configs/<timestamped>.json unless an explicit path was given
-        await ensureOpforDirs();
-        const outPath = path.resolve(opts.config ?? newConfigPath());
-        await writeFile(outPath, JSON.stringify(config, null, 2), "utf8");
-
-        log.success(`\nConfig written → ${outPath}`);
+        const { path: outPath } = await runSetupAndWrite({
+          configOutPath: opts.config,
+          hint,
+          empty: opts.empty,
+        });
         log.info(`Next: opfor execute --config ${outPath}`);
       }
     );

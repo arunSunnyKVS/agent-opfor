@@ -39,11 +39,19 @@ npm run install:cli   # builds + installs `opfor` globally
 ## Quickstart
 
 ```bash
+opfor execute     # wizard + run in one command
+```
+
+That's it. With no `--config`, `execute` runs the setup wizard inline, writes the config to `.opfor/configs/`, then immediately runs it.
+
+Prefer to split setup and execution into two steps (e.g. for CI or so you can review the config before firing attacks)?
+
+```bash
 opfor setup                        # interactive wizard → writes a config
 opfor execute --config <path>      # runs attacks + judges → writes report
 ```
 
-That's it. The wizard prints the exact `--config` path to use on the next line.
+The setup wizard prints the exact `--config` path on its last line.
 
 ---
 
@@ -162,6 +170,9 @@ opfor execute --config ... --turns 5
 
 # Custom report directory
 opfor execute --config ... --output ./my-reports
+
+# Skip steps 1 + 2 entirely — wizard inline, then execute
+opfor execute
 ```
 
 **MCP mode adds two phases not present in agent mode:**
@@ -304,18 +315,19 @@ Header values support `${VAR}` substitution (e.g. `"Authorization": "Bearer ${TA
 
 ## Commands reference
 
-| Command                                      | Description                                                  |
-| -------------------------------------------- | ------------------------------------------------------------ |
-| `opfor setup`                                | Interactive wizard — writes a timestamped config             |
-| `opfor setup --agent` / `--mcp`              | Skip mode prompt                                             |
-| `opfor setup --empty`                        | Write a blank config without wizard prompts                  |
-| `opfor setup --config <path>`                | Override the output config path                              |
-| `opfor execute --config <file>`              | Read config, fire attacks, judge, write HTML + JSON report   |
-| `opfor execute --config <file> --effort <e>` | Override `effort` (`adaptive` or `comprehensive`)            |
-| `opfor execute --config <file> --turns <n>`  | Override turn count (1 forces single-turn)                   |
-| `opfor execute --config <file> --output <d>` | Override report parent directory (default `.opfor/reports/`) |
-| `opfor execute --config <file> --env <path>` | Load env vars from a non-default `.env` path                 |
-| `opfor setup --env <path>`                   | Same `--env` flag works on setup                             |
+| Command                                      | Description                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
+| `opfor setup`                                | Interactive wizard — writes a timestamped config                       |
+| `opfor setup --agent` / `--mcp`              | Skip mode prompt                                                       |
+| `opfor setup --empty`                        | Write a blank config without wizard prompts                            |
+| `opfor setup --config <path>`                | Override the output config path                                        |
+| `opfor execute`                              | Run the setup wizard inline, then execute the resulting config         |
+| `opfor execute --config <file>`              | Read an existing config, fire attacks, judge, write HTML + JSON report |
+| `opfor execute --config <file> --effort <e>` | Override `effort` (`adaptive` or `comprehensive`)                      |
+| `opfor execute --config <file> --turns <n>`  | Override turn count (1 forces single-turn)                             |
+| `opfor execute --config <file> --output <d>` | Override report parent directory (default `.opfor/reports/`)           |
+| `opfor execute --config <file> --env <path>` | Load env vars from a non-default `.env` path                           |
+| `opfor setup --env <path>`                   | Same `--env` flag works on setup                                       |
 
 ---
 

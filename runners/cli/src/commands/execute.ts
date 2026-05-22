@@ -6,23 +6,23 @@ import { runAll } from "@opfor/core/execute/runAll.js";
 import { writeReport } from "@opfor/core/report/buildReport.js";
 import type { RunConfig } from "@opfor/core/execute/types.js";
 import { normalizeEffort } from "@opfor/core/execute/effortCompat.js";
-import { DEFAULT_CONFIG_PATH } from "./setup.js";
+import { runSetupAndWrite } from "./setup.js";
 import { ensureOpforDirs, OPFOR_DIR, OPFOR_REPORTS_DIR } from "../lib/artifacts.js";
 
 export function registerExecuteCommand(program: Command): void {
   program
     .command("execute")
     .description(
-      "Generate attacks and run them against the configured target (requires setup first)"
+      "Run attacks against the configured target. With --config, reads an existing config; without --config, runs the setup wizard inline first."
     )
-    .option("--config <path>", "Path to opfor.config.json", DEFAULT_CONFIG_PATH)
+    .option("--config <path>", "Path to opfor.config.json (omit to run the setup wizard inline)")
     .option("--effort <level>", "Override effort level: adaptive | comprehensive")
     .option("--turns <n>", "Override turns per attack (1 = single turn)")
     .option("--output <dir>", "Directory for HTML + JSON reports (default: .opfor/reports/)")
     .option("--env <path>", "Path to .env file to load")
     .action(
       async (opts: {
-        config: string;
+        config?: string;
         effort?: string;
         turns?: string;
         output?: string;
@@ -33,16 +33,22 @@ export function registerExecuteCommand(program: Command): void {
           loadDotenv({ path: path.resolve(opts.env), override: true });
         }
 
-        const configPath = path.resolve(opts.config);
         let runConfig: RunConfig;
 
-        try {
-          const raw = await readFile(configPath, "utf8");
-          runConfig = JSON.parse(raw) as RunConfig;
-        } catch {
-          log.error(`Cannot read config at ${configPath}. Run \`opfor setup\` first.`);
-          process.exitCode = 1;
-          return;
+        if (opts.config) {
+          const configPath = path.resolve(opts.config);
+          try {
+            const raw = await readFile(configPath, "utf8");
+            runConfig = JSON.parse(raw) as RunConfig;
+          } catch {
+            log.error(`Cannot read config at ${configPath}.`);
+            process.exitCode = 1;
+            return;
+          }
+        } else {
+          // No --config provided: run the setup wizard inline, then execute the resulting config.
+          const result = await runSetupAndWrite();
+          runConfig = result.config;
         }
 
         // CLI overrides
