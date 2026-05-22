@@ -33,6 +33,7 @@ function buildServerConfig(config: McpTargetConfig): Parameters<typeof connectMc
       transport: "stdio",
       command: config.command,
       args: config.args ?? [],
+      cwd: config.cwd,
       env: config.env ?? {},
     };
   }

@@ -30,6 +30,7 @@ export interface McpTargetConfig {
   transport: "stdio" | "url";
   command?: string;
   args?: string[];
+  cwd?: string;
   env?: Record<string, string>;
   url?: string;
   urlHeaders?: Record<string, string>;
