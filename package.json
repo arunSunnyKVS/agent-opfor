@@ -23,6 +23,7 @@
   },
   "scripts": {
     "build": "tsc -b core runners/cli runners/mcp && npm run extension:catalog && npm run build:core --workspace=@opfor/extension",
+    "clean": "rm -rf core/dist runners/*/dist core/*.tsbuildinfo runners/*/*.tsbuildinfo",
     "install:cli": "npm run build && npm install -g ./runners/cli",
     "test": "npm test --workspace=core",
     "typecheck": "tsc -b core runners/cli runners/mcp",
