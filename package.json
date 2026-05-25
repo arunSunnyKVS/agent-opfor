@@ -9,9 +9,7 @@
     "core",
     "runners/cli",
     "runners/mcp",
-    "runners/extension",
-    "tests/e2e/agents/vanilla-chat",
-    "tests/e2e/agents/customer-support"
+    "runners/extension"
   ],
   "files": [
     "skills/",
