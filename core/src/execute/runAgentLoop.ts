@@ -72,6 +72,7 @@ export async function runAgentAttack(
             businessUseCase: attack.businessUseCase,
             siteSnapshot: attack.siteSnapshot,
             maxLength: attack.maxMessageLength,
+            upstreamSessions: attack.upstreamSessions,
           });
 
     const response = await target.send(prompt, {
@@ -113,7 +114,8 @@ export async function runAgentAttack(
             judgeModel,
             await buildJudgeObservability(context?.telemetry, attackTraceId, finalResponse),
             history.length > 2 ? history : undefined,
-            { patternName: attack.patternName, judgeHint: attack.judgeHint }
+            { patternName: attack.patternName, judgeHint: attack.judgeHint },
+            attack.upstreamSessions
           );
 
   return {

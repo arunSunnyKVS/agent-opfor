@@ -21,6 +21,8 @@ export interface EvaluatorSpec {
   patterns: AttackPattern[];
   /** Optional operator hint that sharpens the judge for this evaluator. */
   judgeHint?: string;
+  /** IDs of evaluators whose session context this evaluator depends on. */
+  dependsOn?: string[];
 }
 
 function str(doc: Record<string, unknown>, key: string): string {
@@ -41,6 +43,14 @@ function parsePatterns(doc: Record<string, unknown>): AttackPattern[] {
     out.push({ name: name.trim(), template: template.trim() });
   }
   return out;
+}
+
+function parseDependsOn(doc: Record<string, unknown>): string[] {
+  const raw = doc.depends_on ?? doc.dependsOn;
+  if (!raw) return [];
+  if (typeof raw === "string") return [raw.trim()].filter(Boolean);
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim());
+  return [];
 }
 
 /** Parse evaluator from `skills/opfor-setup/evaluators/<id>.md` (YAML frontmatter only). */
@@ -66,6 +76,7 @@ export async function parseEvaluator(mdPath: string): Promise<EvaluatorSpec> {
   const passCriteria = str(doc, "pass_criteria") || str(doc, "passCriteria");
   const failCriteria = str(doc, "fail_criteria") || str(doc, "failCriteria");
   const patterns = parsePatterns(doc);
+  const dependsOn = parseDependsOn(doc);
 
   if (!id) throw new Error(`Evaluator ${mdPath}: frontmatter must set id`);
   if (!name) throw new Error(`Evaluator ${mdPath}: frontmatter must set name`);
@@ -82,6 +93,7 @@ export async function parseEvaluator(mdPath: string): Promise<EvaluatorSpec> {
     passCriteria,
     failCriteria,
     patterns,
+    ...(dependsOn.length > 0 ? { dependsOn } : {}),
   };
 }
 
