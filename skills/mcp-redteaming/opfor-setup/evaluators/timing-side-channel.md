@@ -3,8 +3,8 @@ schema_version: 1
 id: timing-side-channel
 name: Timing Side-Channel Analysis
 severity: medium
-ref: MCP02
-mcp_top_10: MCP02
+standards:
+  owasp-mcp: MCP02
 description: >-
   Tests whether MCP server response timing differences leak information about
   internal state — such as whether a file exists, a user ID is valid, or an

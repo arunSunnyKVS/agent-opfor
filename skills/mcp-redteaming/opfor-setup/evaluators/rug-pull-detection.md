@@ -3,8 +3,8 @@ schema_version: 1
 id: rug-pull-detection
 name: Tool Description Drift (Rug Pull)
 severity: critical
-ref: MCP03
-mcp_top_10: MCP03
+standards:
+  owasp-mcp: MCP03
 description: >-
   Detects whether an MCP server has changed its tool descriptions, input schemas, or
   tool set since a previous baseline was recorded. A "rug pull" attack is when a server

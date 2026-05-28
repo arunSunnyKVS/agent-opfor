@@ -3,8 +3,8 @@ schema_version: 1
 id: return-value-injection
 name: Runtime Return-Value Injection
 severity: critical
-ref: MCP06
-mcp_top_10: MCP06
+standards:
+  owasp-mcp: MCP06
 description: >-
   Tests whether an MCP server's tool responses contain adversarial content that could
   hijack a consuming LLM agent. Unlike tool-description-injection (which targets static

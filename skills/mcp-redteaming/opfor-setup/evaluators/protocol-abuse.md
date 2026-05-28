@@ -3,8 +3,8 @@ schema_version: 1
 id: protocol-abuse
 name: MCP Protocol Abuse
 severity: high
-ref: MCP05
-mcp_top_10: MCP05
+standards:
+  owasp-mcp: MCP05
 description: >-
   Tests MCP server resilience to protocol-level attacks — malformed JSON-RPC messages,
   unknown method calls, invalid parameter types, oversized payloads, and rapid concurrent
