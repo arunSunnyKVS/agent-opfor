@@ -132,7 +132,13 @@ async function generatePatternAgentAttack(
   traceContext?: string,
   upstreamSessions?: SessionContext[]
 ): Promise<string> {
-  const system = await buildAgentSystemPrompt(evaluator, targetDescription, model, traceContext, upstreamSessions);
+  const system = await buildAgentSystemPrompt(
+    evaluator,
+    targetDescription,
+    model,
+    traceContext,
+    upstreamSessions
+  );
   const user = [
     `Attack Pattern: ${patternName}`,
     ``,

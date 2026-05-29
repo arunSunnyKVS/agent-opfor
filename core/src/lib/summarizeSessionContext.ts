@@ -111,11 +111,7 @@ export async function formatUpstreamSessions(
   }
 }
 
-function truncateFallback(
-  fullText: string,
-  maxChars: number,
-  sectionHeader?: string
-): string {
+function truncateFallback(fullText: string, maxChars: number, sectionHeader?: string): string {
   const header = sectionHeader ? `${sectionHeader}\n` : "";
   return `${header}${fullText.slice(0, maxChars - 30)}\n…(truncated — summarization unavailable)`;
 }

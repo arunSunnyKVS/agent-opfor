@@ -75,7 +75,10 @@ function parseDependsOn(doc: Record<string, unknown>): string[] {
   const raw = doc.depends_on ?? doc.dependsOn;
   if (!raw) return [];
   if (typeof raw === "string") return [raw.trim()].filter(Boolean);
-  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim());
+  if (Array.isArray(raw))
+    return raw
+      .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+      .map((v) => v.trim());
   return [];
 }
 

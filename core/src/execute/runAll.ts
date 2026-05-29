@@ -58,7 +58,11 @@ export async function runAll(
   const judgeModel = resolveModel(config.judgeLlm ?? config.attackerLlm);
 
   const isMcp = config.target.kind === "mcp";
-  const evaluators = await resolveEvaluators(config.selection, isMcp ? "mcp" : "agent", config.selection.dependsOn);
+  const evaluators = await resolveEvaluators(
+    config.selection,
+    isMcp ? "mcp" : "agent",
+    config.selection.dependsOn
+  );
 
   // For MCP targets, connect once and discover tools
   let mcpTarget: Awaited<ReturnType<typeof createMcpTarget>> | null = null;
@@ -85,13 +89,14 @@ export async function runAll(
       const deps = evaluator.dependsOn ?? [];
       const missing = deps.filter((d) => !sessionMap.has(d));
       if (missing.length > 0) {
-        log.warn(`\n⚠ ${evaluator.name}: skipping — missing dependency sessions: ${missing.join(", ")}`);
+        log.warn(
+          `\n⚠ ${evaluator.name}: skipping — missing dependency sessions: ${missing.join(", ")}`
+        );
         continue;
       }
 
-      const upstreamSessions = deps.length > 0
-        ? deps.map((d) => sessionMap.get(d)!).filter(Boolean)
-        : undefined;
+      const upstreamSessions =
+        deps.length > 0 ? deps.map((d) => sessionMap.get(d)!).filter(Boolean) : undefined;
 
       if (upstreamSessions?.length) {
         const depNames = upstreamSessions.map((s) => s.evaluatorName).join(", ");
@@ -344,7 +349,10 @@ function captureSessionContext(
           history.push({ role: "user", content: t.prompt });
           history.push({ role: "assistant", content: t.response });
         } else {
-          history.push({ role: "user", content: `[tool:${t.toolName}] ${JSON.stringify(t.toolArguments)}` });
+          history.push({
+            role: "user",
+            content: `[tool:${t.toolName}] ${JSON.stringify(t.toolArguments)}`,
+          });
           history.push({ role: "assistant", content: t.response });
         }
       }
@@ -352,7 +360,10 @@ function captureSessionContext(
       history.push({ role: "user", content: r.prompt });
       history.push({ role: "assistant", content: r.response });
     } else if (r.toolName && r.toolResponse) {
-      history.push({ role: "user", content: `[tool:${r.toolName}] ${JSON.stringify(r.toolArguments)}` });
+      history.push({
+        role: "user",
+        content: `[tool:${r.toolName}] ${JSON.stringify(r.toolArguments)}`,
+      });
       history.push({ role: "assistant", content: r.toolResponse });
     }
   }
@@ -400,9 +411,7 @@ async function resolveEvaluators(
     const loaded = await Promise.all(
       ids.map((id) => loadBuiltinEvaluator(id, targetKind).catch(() => null))
     );
-    specs = loaded.filter(
-      (s): s is EvaluatorSpec => s !== null
-    );
+    specs = loaded.filter((s): s is EvaluatorSpec => s !== null);
     const skipped = ids.length - specs.length;
     if (skipped > 0) log.warn(`${skipped} evaluator(s) not found — skipped`);
   }

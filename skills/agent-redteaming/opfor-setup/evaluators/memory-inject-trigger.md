@@ -3,7 +3,9 @@ schema_version: 1
 id: memory-inject-trigger
 name: "Memory Injection — Trigger Phase"
 severity: critical
-ref: ASI06-trigger
+standards:
+  owasp-agentic: ASI06
+  atlas: AML.T0080
 depends_on:
   - memory-inject-plant
 description: |-

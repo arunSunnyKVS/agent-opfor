@@ -3,12 +3,7 @@ import pg from "pg";
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import {
-  HumanMessage,
-  AIMessage,
-  SystemMessage,
-  ToolMessage,
-} from "@langchain/core/messages";
+import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4001;
@@ -288,7 +283,10 @@ async function main() {
       for (const tc of toolCalls) {
         const toolFn = toolsByName[tc.name];
         if (!toolFn) {
-          const errMsg = new ToolMessage({ content: `Unknown tool: ${tc.name}`, tool_call_id: tc.id! });
+          const errMsg = new ToolMessage({
+            content: `Unknown tool: ${tc.name}`,
+            tool_call_id: tc.id!,
+          });
           messages.push(errMsg);
           continue;
         }
