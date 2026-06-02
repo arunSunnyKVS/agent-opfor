@@ -408,9 +408,21 @@ export function renderReport(model: ReportViewModel): string {
   .result-tool{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace}
   .result-section{margin-bottom:8px}
   .result-section-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px}
-  .result-code{font-size:12px;background:var(--surface-2);border:1px solid var(--line);padding:8px 10px;border-radius:6px;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-height:200px;overflow:auto}
+  .result-code{font-size:12px;background:var(--surface-2);border:1px solid var(--line);padding:8px 10px;border-radius:6px;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-height:400px;overflow:auto}
   .result-judge{margin-top:8px;font-size:12px;padding:8px 12px;border-radius:6px;border:1px solid var(--pass-border);background:var(--pass-bg);line-height:1.6}
   .result-judge.fail{background:var(--fail-bg);border-color:var(--fail-border)}
+
+  /* ── Turn cards (multi-turn breakdown) ── */
+  .turn-card{margin-bottom:8px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .turn-card-header{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--surface-2);cursor:pointer;list-style:none;font-size:11px;font-weight:600;color:var(--text);border-bottom:1px solid var(--line)}
+  .turn-card-header::-webkit-details-marker{display:none}
+  .turn-attacker{background:#FFF8ED;padding:10px 12px;border-bottom:1px solid #FDE68A55}
+  .turn-attacker .turn-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#92400E;margin-bottom:5px}
+  .turn-attacker .result-code{background:#FEF3C7;border-color:#FDE68A;max-height:none}
+  .turn-agent{background:#F0F9FF;padding:10px 12px}
+  .turn-agent .turn-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#075985;margin-bottom:5px}
+  .turn-agent .result-code{background:#E0F2FE;border-color:#BAE6FD;max-height:none}
+  .turn-reasoning{padding:7px 12px;background:var(--surface-2);border-top:1px solid var(--line);font-size:11px;color:var(--muted);font-style:italic;line-height:1.5}
 
   /* ── Footer ── */
   .report-footer{max-width:960px;margin:40px auto 0;padding:16px 24px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
@@ -585,12 +597,12 @@ function renderDetailContent(detail: DetailCard, _mode: "agent" | "mcp"): string
   if (detail.kind === "prompt") {
     return `
       <details class="result-section">
-        <summary style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);cursor:pointer">Attacker Prompt</summary>
-        <pre class="result-code" style="margin-top:4px">${esc(truncate(detail.prompt, 3000))}</pre>
+        <summary style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#92400E;cursor:pointer;padding:2px 0">▸ Attacker Prompt</summary>
+        <pre class="result-code" style="margin-top:4px;background:#FEF3C7;border-color:#FDE68A">${esc(truncate(detail.prompt, 3000))}</pre>
       </details>
       <details class="result-section">
-        <summary style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);cursor:pointer">Agent Response</summary>
-        <pre class="result-code" style="margin-top:4px">${esc(truncate(detail.response, 3000))}</pre>
+        <summary style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#075985;cursor:pointer;padding:2px 0">▸ Agent Response</summary>
+        <pre class="result-code" style="margin-top:4px;background:#E0F2FE;border-color:#BAE6FD">${esc(truncate(detail.response, 3000))}</pre>
       </details>`;
   }
   const argsFormatted = esc(JSON.stringify(detail.args, null, 2));
@@ -620,33 +632,50 @@ function renderTurnContent(turn: TurnViewModel): string {
           : "var(--muted)";
   const borderColor = tVerdict ? tColor : "var(--line-2)";
 
+  const verdictBadge = tVerdict
+    ? `<span style="margin-left:auto;font-size:10px;font-weight:700;padding:1px 8px;border-radius:3px;background:${tVerdict === "PASS" ? "var(--pass-bg)" : tVerdict === "FAIL" ? "var(--fail-bg)" : "#FEF3C7"};color:${tColor};border:1px solid ${tVerdict === "PASS" ? "var(--pass-border)" : tVerdict === "FAIL" ? "var(--fail-border)" : "#FDE68A"}">${tVerdict}${tVerdict !== "ERROR" ? ` · ${turn.judge?.score}/10` : ""}</span>`
+    : "";
+
   let detailHtml: string;
   if (turn.detail.kind === "prompt") {
     detailHtml = `
-      <div class="result-section-label">Attacker Prompt</div>
-      <pre class="result-code" style="max-height:120px">${esc(truncate(turn.detail.prompt, 2000))}</pre>
-      <div class="result-section-label" style="margin-top:6px">Agent Response</div>
-      <pre class="result-code" style="max-height:120px">${esc(truncate(turn.detail.response, 2000))}</pre>`;
+      <div class="turn-attacker">
+        <div class="turn-label">Attacker Prompt</div>
+        <pre class="result-code">${esc(truncate(turn.detail.prompt, 2000))}</pre>
+      </div>
+      <div class="turn-agent">
+        <div class="turn-label">Agent Response</div>
+        <pre class="result-code">${esc(truncate(turn.detail.response, 2000))}</pre>
+      </div>`;
   } else {
     const tArgs = esc(JSON.stringify(turn.detail.args, null, 2));
     const tResp = turn.detail.error
       ? `Error: ${esc(truncate(turn.detail.error, 600))}`
       : esc(truncate(turn.detail.response, 800));
-    const toolLabel = turn.detail.toolName ? ` · <code>${esc(turn.detail.toolName)}</code>` : "";
+    const toolLabel = turn.detail.toolName
+      ? ` · <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px;font-size:10px">${esc(turn.detail.toolName)}</code>`
+      : "";
     detailHtml = `
-      <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px">Turn ${turn.turnIndex}${toolLabel}${tVerdict ? ` · <span style="color:${tColor}">${tVerdict}</span>${tVerdict !== "ERROR" ? ` · ${turn.judge?.score}/10` : ""}` : ""}</div>
-      <div class="result-section-label">Arguments</div>
-      <pre class="result-code" style="max-height:120px">${tArgs}</pre>
-      <div class="result-section-label" style="margin-top:6px">Response</div>
-      <pre class="result-code" style="max-height:120px">${tResp}</pre>`;
+      <div class="turn-attacker">
+        <div class="turn-label">Arguments${toolLabel}</div>
+        <pre class="result-code">${tArgs}</pre>
+      </div>
+      <div class="turn-agent">
+        <div class="turn-label">Tool Response</div>
+        <pre class="result-code">${tResp}</pre>
+      </div>`;
   }
 
   return `
-    <div style="margin-bottom:8px;padding:8px 10px;background:var(--surface-2);border-radius:6px;border-left:2px solid ${borderColor}">
-      ${turn.detail.kind === "prompt" ? `<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px">Turn ${turn.turnIndex}${tVerdict ? ` · <span style="color:${tColor}">${tVerdict}</span>${tVerdict !== "ERROR" ? ` · ${turn.judge?.score}/10` : ""}` : ""}</div>` : ""}
+    <details class="turn-card" open>
+      <summary class="turn-card-header" style="border-left:3px solid ${borderColor}">
+        <span style="font-family:ui-monospace,monospace;font-size:10px;color:var(--muted-2)">T${turn.turnIndex}</span>
+        <span>Turn ${turn.turnIndex}</span>
+        ${verdictBadge}
+      </summary>
       ${detailHtml}
-      ${turn.judge?.reasoning ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;font-style:italic">${esc(turn.judge.reasoning)}</div>` : ""}
-    </div>`;
+      ${turn.judge?.reasoning ? `<div class="turn-reasoning">${esc(turn.judge.reasoning)}</div>` : ""}
+    </details>`;
 }
 
 function resultCard(r: ResultViewModel, index: number, mode: "agent" | "mcp"): string {
