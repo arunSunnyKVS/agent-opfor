@@ -36,6 +36,7 @@
     "sync:skills-evaluators": "tsx scripts/sync-skills-evaluators.ts",
     "sync:skills-evaluators:check": "tsx scripts/sync-skills-evaluators.ts --check",
     "coverage:atlas": "tsx scripts/generate-atlas-coverage.ts",
+    "report:pdf": "tsx scripts/generate-pdf-report.ts",
     "prepare": "husky"
   },
   "devDependencies": {
