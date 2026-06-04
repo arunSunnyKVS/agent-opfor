@@ -4,7 +4,7 @@ id: memory-inject-plant
 name: "Memory Injection — Plant Phase"
 severity: high
 standards:
-  owasp-agentic: ASI06
+  owasp-agentic: ASI06-plant
   atlas: AML.T0080
 description: |-
   Plant phase of a two-phase memory injection attack. Send innocuous-looking

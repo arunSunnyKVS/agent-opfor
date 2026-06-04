@@ -38,7 +38,15 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -227,7 +235,9 @@ function clip(text: string, cap: number): { body: string; hidden: number } {
 }
 
 function truncMark(hidden: number): string {
-  return hidden > 0 ? `<div class="trunc-mark">+${hidden.toLocaleString()} more characters</div>` : "";
+  return hidden > 0
+    ? `<div class="trunc-mark">+${hidden.toLocaleString()} more characters</div>`
+    : "";
 }
 
 function attackerBody(prompt: string | undefined, truncate: boolean): string {
@@ -242,7 +252,12 @@ function attackerBody(prompt: string | undefined, truncate: boolean): string {
  * show that text highlighted with a little context, instead of the whole reply.
  * Falls back to head truncation when there is no usable evidence.
  */
-function agentBody(response: string | undefined, error: string | undefined, truncate: boolean, evidence?: string): string {
+function agentBody(
+  response: string | undefined,
+  error: string | undefined,
+  truncate: boolean,
+  evidence?: string
+): string {
   const raw = response ?? error ?? "";
   if (!truncate) return `<pre class="bubble-body">${esc(prettifyResponse(raw))}</pre>`;
 
@@ -278,7 +293,8 @@ function renderTurn(turn: Turn, truncate: boolean, evidence?: string): string {
   const v = turn.judge?.verdict;
   const vColor = v === "PASS" ? "var(--pass)" : v === "FAIL" ? "var(--fail)" : "#D97706";
   const vBg = v === "PASS" ? "var(--pass-bg)" : v === "FAIL" ? "var(--fail-bg)" : "#FEF3C7";
-  const vBorder = v === "PASS" ? "var(--pass-border)" : v === "FAIL" ? "var(--fail-border)" : "#FDE68A";
+  const vBorder =
+    v === "PASS" ? "var(--pass-border)" : v === "FAIL" ? "var(--fail-border)" : "#FDE68A";
   const verdictBadge = v
     ? `<span class="turn-verdict" style="color:${vColor};background:${vBg};border-color:${vBorder}">${v}${v !== "ERROR" ? ` · ${turn.judge?.score}/10` : ""}</span>`
     : "";
@@ -324,7 +340,9 @@ function judgeBox(j: Judge): string {
     `Score ${j.score}/10`,
     `Confidence ${j.confidence}%`,
     j.evidence && j.evidence !== "N/A" ? `Evidence: ${esc(j.evidence)}` : "",
-    v === "FAIL" && j.failingTurns?.length ? `Failing turn${j.failingTurns.length === 1 ? "" : "s"}: ${j.failingTurns.join(", ")}` : "",
+    v === "FAIL" && j.failingTurns?.length
+      ? `Failing turn${j.failingTurns.length === 1 ? "" : "s"}: ${j.failingTurns.join(", ")}`
+      : "",
   ].filter(Boolean);
   return `<div class="judge-box ${cls}">
       <div class="judge-head">
@@ -444,7 +462,11 @@ function renderHtml(report: Report): string {
   const mode = CFG.mode;
   const { summary } = report;
   const now = new Date(report.generatedAt);
-  const dateStr = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const dateStr = now.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
   const scoreDenominator = summary.passed + summary.failed;
@@ -480,7 +502,8 @@ function renderHtml(report: Report): string {
   // Worst first: by severity, then lowest score (most severe breach).
   failures.sort(
     (a, b) =>
-      (SEV_RANK[a.evaluator.severity.toLowerCase()] ?? 9) - (SEV_RANK[b.evaluator.severity.toLowerCase()] ?? 9) ||
+      (SEV_RANK[a.evaluator.severity.toLowerCase()] ?? 9) -
+        (SEV_RANK[b.evaluator.severity.toLowerCase()] ?? 9) ||
       a.attack.judge.score - b.attack.judge.score
   );
 
@@ -491,7 +514,9 @@ function renderHtml(report: Report): string {
       const passDenom = e.passed + e.failed;
       const passRate = passDenom > 0 ? Math.round((e.passed / passDenom) * 100) : 0;
       const scoreable = e.attacks.filter((a) => a.judge.verdict !== "ERROR");
-      const avg = scoreable.length ? (scoreable.reduce((s, a) => s + a.judge.score, 0) / scoreable.length).toFixed(1) : "—";
+      const avg = scoreable.length
+        ? (scoreable.reduce((s, a) => s + a.judge.score, 0) / scoreable.length).toFixed(1)
+        : "—";
       const verdictPass = e.failed === 0 && e.passed > 0;
       const barColor = verdictPass ? "#059669" : "#DC2626";
       return `<tr>
@@ -529,7 +554,9 @@ function renderHtml(report: Report): string {
     })
     .join("");
   const compactTitle =
-    errored.length > 0 ? `Passed & Non-scoring Tests (${passes.length + errored.length})` : `Passed Tests (${passes.length})`;
+    errored.length > 0
+      ? `Passed & Non-scoring Tests (${passes.length + errored.length})`
+      : `Passed Tests (${passes.length})`;
 
   const narrative =
     overallVerdict === "PASS"
@@ -921,13 +948,19 @@ ${detailSections}
 // ── Chrome discovery & PDF rendering ──────────────────────────────────────────
 
 function findChrome(): string | null {
-  if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
+  if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH))
+    return process.env.CHROME_PATH;
   const candidates = ["google-chrome-stable", "google-chrome", "chromium", "chromium-browser"];
   for (const c of candidates) {
     const which = spawnSync("which", [c], { encoding: "utf8" });
     if (which.status === 0 && which.stdout.trim()) return which.stdout.trim();
   }
-  for (const p of ["/snap/bin/chromium", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"]) {
+  for (const p of [
+    "/snap/bin/chromium",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+  ]) {
     if (existsSync(p)) return p;
   }
   return null;
@@ -957,7 +990,9 @@ function renderPdf(chrome: string, htmlPath: string, pdfPath: string): void {
     res = spawnSync(chrome, legacy, { encoding: "utf8" });
   }
   if (!existsSync(pdfPath)) {
-    throw new Error(`Chrome failed to produce a PDF.\n${res.stderr || res.stdout || "(no output)"}`);
+    throw new Error(
+      `Chrome failed to produce a PDF.\n${res.stderr || res.stdout || "(no output)"}`
+    );
   }
 }
 

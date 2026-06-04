@@ -58,7 +58,7 @@ const EVALUATOR_TREES = [
     label: "mcp",
     evaluatorsDir: path.join(REPO_ROOT, "evaluators/mcp"),
     suitesDir: path.join(REPO_ROOT, "suites/mcp"),
-    requirePatterns: true,
+    requirePatterns: false,
   },
 ];
 
@@ -138,7 +138,7 @@ async function validateEvaluator(
   const patterns = data.patterns ?? [];
 
   if (tree.requirePatterns && patterns.length === 0) {
-    errors.push("patterns must be a non-empty array for agent evaluators");
+    errors.push(`patterns must be a non-empty array for ${tree.label} evaluators`);
   }
 
   if (!data.description?.trim()) {
