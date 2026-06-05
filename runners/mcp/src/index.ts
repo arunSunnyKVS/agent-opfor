@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { loadSkillCatalog } from "@opfor/core/config/loadSkillCatalog.js";
+import { loadCatalog as loadMcpCatalog } from "@opfor/core/catalog/loadCatalog.js";
 import { runAll } from "@opfor/core/execute/runAll.js";
 import { writeReport } from "@opfor/core/report/buildReport.js";
 import { PROVIDERS, type ProviderName } from "@opfor/core/config/types.js";
@@ -27,11 +28,20 @@ server.tool(
   "opfor_list_evaluators",
   "List all available Opfor evaluators and suites. " +
     "ALWAYS call this before opfor_setup — never assume evaluator IDs. " +
-    "Returns each evaluator's id, name, severity, and OWASP reference, plus predefined suites.",
-  {},
-  async () => {
+    "Returns each evaluator's id, name, severity, and OWASP reference, plus predefined suites. " +
+    "Pass target_kind to get the correct evaluators for your target type. " +
+    "After returning the list, STOP and ask the user which suite or evaluators they want to run — do NOT proceed to opfor_setup automatically.",
+  {
+    target_kind: z
+      .enum(["agent", "mcp"])
+      .optional()
+      .default("agent")
+      .describe("'agent' for AI agent/chatbot targets, 'mcp' for MCP server targets"),
+  },
+  async (args) => {
     try {
-      const catalog = await loadSkillCatalog();
+      const catalog =
+        args.target_kind === "mcp" ? await loadMcpCatalog() : await loadSkillCatalog();
       const suiteLines = catalog.suites.map(
         (s) =>
           `  Suite: ${s.id}\n` +
@@ -91,7 +101,29 @@ const LlmConfigSchema = z.object({
 server.tool(
   "opfor_setup",
   "Configure an Opfor red team run and write opfor.config.json. " +
-    "Call opfor_list_evaluators first to get valid evaluator/suite IDs. " +
+    "Before calling this tool you MUST ask the user for ALL of the following — do NOT assume or infer any value autonomously:\n" +
+    "TARGET\n" +
+    "  1. Target kind: 'agent' (HTTP chatbot/API) or 'mcp' (MCP server)?\n" +
+    "  2. Target name.\n" +
+    "  3. (agent) Description of what the agent does.\n" +
+    "  4. (agent) HTTP endpoint URL.\n" +
+    "  5. (agent) Request format: 'openai' (chat completions), 'json' ({ prompt }), or 'auto'?\n" +
+    "  6. (agent) Model name sent to the target in the 'model' field (e.g. sarvam-30b) — ask only if relevant to the endpoint.\n" +
+    "  7. (agent) Does the target require an API key?\n" +
+    "  8. (mcp) Transport: 'stdio' or 'url'? Then ask command+args or URL accordingly.\n" +
+    "EVALUATORS\n" +
+    "  9. Call opfor_list_evaluators with the chosen target_kind, present the suites and evaluators to the user, then ask: run a full suite or specific evaluators?\n" +
+    "ATTACKER LLM\n" +
+    " 10. Provider — options: openai, anthropic, groq, google, deepseek, azure, openai-compatible.\n" +
+    " 11. Model name for that provider.\n" +
+    " 12. Name of the environment variable that holds the API key (e.g. OPENAI_API_KEY).\n" +
+    " 13. (openai-compatible or azure only) Base URL.\n" +
+    "JUDGE LLM\n" +
+    " 14. Use a separate LLM for judging, or reuse the attacker LLM?\n" +
+    "RUN SETTINGS\n" +
+    " 15. Effort: 'adaptive' (one sustained chat per evaluator) or 'comprehensive' (one attack per named pattern)?\n" +
+    " 16. Turns per attack: 1 (single-turn) or 2-10 (multi-turn escalation)?\n" +
+    "Only call this tool once you have confirmed all answers with the user. " +
     "Returns the config file path — pass it to opfor_execute.",
   {
     // Target
@@ -115,6 +147,12 @@ server.tool(
       .string()
       .optional()
       .describe("What the agent does (used in attack generation)"),
+    agent_target_model: z
+      .string()
+      .optional()
+      .describe(
+        "Model name sent to the target endpoint in the 'model' field (e.g. sarvam-30b, gpt-4o)"
+      ),
 
     // MCP target fields (required when target_kind = mcp)
     mcp_transport: z.enum(["stdio", "url"]).optional().describe("MCP transport type"),
@@ -305,6 +343,7 @@ function buildRunConfig(args: Record<string, unknown>): RunConfig {
       endpoint: args.agent_endpoint ? String(args.agent_endpoint) : undefined,
       requestFormat: (args.agent_request_format as "auto" | "openai" | "json") ?? "auto",
       targetApiKey: args.agent_target_api_key ? String(args.agent_target_api_key) : undefined,
+      targetModel: args.agent_target_model ? String(args.agent_target_model) : undefined,
       scriptPath: args.agent_script_path ? String(args.agent_script_path) : undefined,
     };
   } else {
@@ -321,6 +360,12 @@ function buildRunConfig(args: Record<string, unknown>): RunConfig {
           : undefined,
       url: args.mcp_url ? String(args.mcp_url) : undefined,
     };
+  }
+
+  if (!args.suite_id && (!args.evaluator_ids || (args.evaluator_ids as string[]).length === 0)) {
+    throw new Error(
+      "Provide either suite_id or evaluator_ids (call opfor_list_evaluators to see valid IDs)"
+    );
   }
 
   const selection: RunConfig["selection"] = args.suite_id
