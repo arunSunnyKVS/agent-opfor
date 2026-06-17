@@ -13,13 +13,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Resolve the seed data directory. At runtime this module lives in
- * `dist/autonomous/knowledge/load.js`, so the bundled seeds are at
- * `../../../../data` (relative to the runner's `data/` dir shipped
- * via package.json `files`). Callers should always pass `seedDir`
+ * `core/dist/autonomous/knowledge/load.js`, so the bundled seeds are at
+ * `../../../../runners/cli/data` (the CLI's `data/` dir shipped via
+ * package.json `files`). Callers should always pass `seedDir`
  * explicitly; this fallback is a best-effort for in-repo dev use.
  */
 function defaultSeedDir(): string {
-  return path.resolve(__dirname, "../../../../runners/autonomous/data");
+  return path.resolve(__dirname, "../../../../runners/cli/data");
 }
 
 async function readMdDir(dir: string): Promise<Array<Record<string, unknown>>> {

@@ -9,8 +9,7 @@
     "core",
     "runners/cli",
     "runners/mcp",
-    "runners/extension",
-    "runners/autonomous"
+    "runners/extension"
   ],
   "files": [
     "evaluators/",
@@ -23,11 +22,11 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "npm run sync:skills-evaluators && tsc -b core runners/cli runners/mcp runners/autonomous && npm run extension:catalog && npm run build:core --workspace=@opfor/extension",
+    "build": "npm run sync:skills-evaluators && tsc -b core runners/cli runners/mcp && npm run extension:catalog && npm run build:core --workspace=@opfor/extension",
     "clean": "rm -rf core/dist runners/*/dist core/*.tsbuildinfo runners/*/*.tsbuildinfo",
     "install:cli": "npm run build && npm install -g ./runners/cli",
     "test": "npm test --workspace=core",
-    "typecheck": "tsc -b core runners/cli runners/mcp runners/autonomous",
+    "typecheck": "tsc -b core runners/cli runners/mcp",
     "extension:catalog": "npm run build:catalog --workspace=@opfor/extension",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

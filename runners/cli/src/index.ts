@@ -9,7 +9,7 @@ import { config as loadDotenv } from "dotenv";
 import { Command } from "commander";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerExecuteCommand } from "./commands/execute.js";
-import { registerAutoCommand } from "@opfor/autonomous/commands/auto.js";
+import { registerAutoCommand } from "./commands/auto.js";
 
 loadDotenv();
 
