@@ -2,8 +2,8 @@
 
 Do **not** edit files here. Author changes under repo root:
 
-- `evaluators/mcp/`
-- `suites/mcp/`
+- `evaluators/${"mcp"}/`
+- `suites/${"mcp"}/`
 
 Then run:
 

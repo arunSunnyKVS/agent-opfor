@@ -1,23 +1,25 @@
 /**
- * Validate evaluator and suite markdown at repo root (`evaluators/`, `suites/`).
+ * Validate evaluator and suite YAML files at repo root (`evaluators/`, `suites/`).
  *
- * Evaluator rules:
- *   - id, name, severity, pass_criteria, fail_criteria required
- *   - patterns required and non-empty for agent evaluators; optional for MCP
+ * Evaluator structure (new YAML format):
+ *   evaluators/{category}/{subcategory}/{evaluator-name}/
+ *     - evaluator.yaml (required: id, name, severity, pass_criteria, fail_criteria)
+ *     - patterns/*.yaml (attack patterns)
+ *     - *.test.yaml (optional test cases)
+ *
+ * Suite structure:
+ *   suites/{category}/*.yaml (id, name, description, evaluators[])
  *
  * Exit 0 — all files valid (warnings may still be printed).
  * Exit 1 — one or more hard errors found.
  */
 
 import { execSync } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import {
-  EvaluatorFrontmatterSchema,
-  SuiteFrontmatterSchema,
-} from "../core/src/evaluators/schema.js";
+import { z } from "zod";
 import { loadAtlasTechniqueIdSet } from "../core/src/standards/atlas.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,8 +27,65 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 
 const STAGED_ONLY = process.argv.includes("--staged");
 
-/** Paths (repo-relative) of staged evaluator .md files when --staged is set. */
-function getStagedEvaluatorPaths(): Set<string> | null {
+// Schema for evaluator.yaml files
+const EvaluatorYamlSchema = z.object({
+  schema_version: z.number().optional(),
+  id: z.string().min(1),
+  name: z.string().min(1),
+  severity: z.enum(["critical", "high", "medium", "low"]),
+  description: z.string().optional(),
+  pass_criteria: z.string().min(1),
+  fail_criteria: z.string().min(1),
+  standards: z
+    .object({
+      "owasp-llm": z.string().optional(),
+      "owasp-agentic": z.string().optional(),
+      atlas: z.string().optional(),
+    })
+    .optional(),
+  judge_hint: z.string().optional(),
+  surfaces: z.array(z.enum(["agent", "browser", "mcp"])).optional(),
+  turn_mode: z.enum(["single", "multi"]).optional(),
+  strategy: z.string().optional(),
+  depends_on: z.union([z.string(), z.array(z.string())]).optional(),
+});
+
+// Schema for suite YAML files
+const SuiteYamlSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  evaluators: z.array(z.string().min(1)).min(1),
+});
+
+// Schema for pattern YAML files
+const PatternYamlSchema = z.object({
+  name: z.string().min(1),
+  template: z.string().min(1),
+  judge_hint: z.string().optional(),
+});
+
+const EVALUATOR_TREES = [
+  {
+    label: "agent",
+    evaluatorsDir: path.join(REPO_ROOT, "evaluators/agent"),
+    suitesDir: path.join(REPO_ROOT, "suites/agent"),
+  },
+  {
+    label: "mcp",
+    evaluatorsDir: path.join(REPO_ROOT, "evaluators/mcp"),
+    suitesDir: path.join(REPO_ROOT, "suites/mcp"),
+  },
+];
+
+interface FileResult {
+  file: string;
+  errors: string[];
+  warnings: string[];
+}
+
+/** Get staged YAML files when --staged is set. */
+function getStagedPaths(): Set<string> | null {
   if (!STAGED_ONLY) return null;
   try {
     const out = execSync("git diff --cached --name-only --diff-filter=ACMR", {
@@ -36,7 +95,7 @@ function getStagedEvaluatorPaths(): Set<string> | null {
     const paths = new Set<string>();
     for (const line of out.split(/\r?\n/)) {
       const p = line.trim();
-      if (!p.endsWith(".md")) continue;
+      if (!p.endsWith(".yaml") && !p.endsWith(".yml")) continue;
       if (/^evaluators\/(agent|mcp)\//.test(p) || /^suites\/(agent|mcp)\//.test(p)) {
         paths.add(p);
       }
@@ -47,46 +106,49 @@ function getStagedEvaluatorPaths(): Set<string> | null {
   }
 }
 
-const EVALUATOR_TREES = [
-  {
-    label: "agent",
-    evaluatorsDir: path.join(REPO_ROOT, "evaluators/agent"),
-    suitesDir: path.join(REPO_ROOT, "suites/agent"),
-    requirePatterns: true,
-  },
-  {
-    label: "mcp",
-    evaluatorsDir: path.join(REPO_ROOT, "evaluators/mcp"),
-    suitesDir: path.join(REPO_ROOT, "suites/mcp"),
-    requirePatterns: false,
-  },
-];
+/** Recursively find all evaluator.yaml files in a directory. */
+async function findEvaluatorFiles(dir: string): Promise<string[]> {
+  const results: string[] = [];
 
-function splitFrontmatter(raw: string): { yaml: string; body: string } | null {
-  const lines = raw.split(/\r?\n/);
-  if (lines.length < 2 || lines[0].trim() !== "---") return null;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") {
-      return {
-        yaml: lines.slice(1, i).join("\n"),
-        body: lines.slice(i + 1).join("\n"),
-      };
+  async function walk(currentDir: string): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await readdir(currentDir);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry);
+      const s = await stat(fullPath);
+      if (s.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry === "evaluator.yaml") {
+        results.push(fullPath);
+      }
     }
   }
-  return null;
+
+  await walk(dir);
+  return results;
 }
 
-interface FileResult {
-  file: string;
-  errors: string[];
-  warnings: string[];
+/** Find all pattern YAML files for an evaluator. */
+async function findPatternFiles(evaluatorDir: string): Promise<string[]> {
+  const patternsDir = path.join(evaluatorDir, "patterns");
+  try {
+    const entries = await readdir(patternsDir);
+    return entries
+      .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
+      .map((f) => path.join(patternsDir, f));
+  } catch {
+    return [];
+  }
 }
 
 async function validateEvaluator(
   filePath: string,
-  tree: (typeof SKILL_TREES)[number],
   knownIds: Map<string, string>,
-  stagedEvaluatorPaths: Set<string> | null,
   atlasTechniqueIds: Set<string>
 ): Promise<FileResult> {
   const relPath = path.relative(REPO_ROOT, filePath);
@@ -100,24 +162,15 @@ async function validateEvaluator(
     return { file: relPath, errors: ["could not read file"], warnings };
   }
 
-  const fm = splitFrontmatter(raw);
-  if (!fm) {
-    return {
-      file: relPath,
-      errors: ["file must start with YAML frontmatter between --- lines"],
-      warnings,
-    };
-  }
-
   let doc: unknown;
   try {
-    doc = parseYaml(fm.yaml);
+    doc = parseYaml(raw);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { file: relPath, errors: [`invalid YAML in frontmatter: ${msg}`], warnings };
+    return { file: relPath, errors: [`invalid YAML: ${msg}`], warnings };
   }
 
-  const result = EvaluatorFrontmatterSchema.safeParse(doc);
+  const result = EvaluatorYamlSchema.safeParse(doc);
   if (!result.success) {
     for (const issue of result.error.issues) {
       const field = issue.path.join(".");
@@ -135,31 +188,11 @@ async function validateEvaluator(
     knownIds.set(id, relPath);
   }
 
-  const patterns = data.patterns ?? [];
-
-  if (tree.requirePatterns && patterns.length === 0) {
-    errors.push(`patterns must be a non-empty array for ${tree.label} evaluators`);
-  }
-
   if (!data.description?.trim()) {
-    warnings.push("description is empty (recommended for contributor docs)");
+    warnings.push("description is empty (recommended for docs)");
   }
 
-  const rawDoc = doc as Record<string, unknown>;
-  const enforceStandardsShape = stagedEvaluatorPaths === null || stagedEvaluatorPaths.has(relPath);
-  if (enforceStandardsShape) {
-    if ("ref" in rawDoc) {
-      errors.push(
-        "ref is not supported — use standards: { owasp-llm: LLM07 } (see docs/evaluator-schema.md)"
-      );
-    }
-    if ("mitre" in rawDoc) {
-      errors.push(
-        "mitre is not supported — use standards.atlas: AML.T0056 (see docs/evaluator-schema.md)"
-      );
-    }
-  }
-
+  // Validate ATLAS technique ID
   const atlasId = data.standards?.atlas;
   if (typeof atlasId === "string" && atlasId.trim()) {
     const normalized = atlasId.trim();
@@ -174,10 +207,39 @@ async function validateEvaluator(
     }
   }
 
+  // Validate patterns exist
+  const evaluatorDir = path.dirname(filePath);
+  const patternFiles = await findPatternFiles(evaluatorDir);
+  if (patternFiles.length === 0) {
+    warnings.push("no patterns found in patterns/ directory");
+  }
+
+  // Validate each pattern file
+  for (const patternFile of patternFiles) {
+    const patternRelPath = path.relative(REPO_ROOT, patternFile);
+    try {
+      const patternRaw = await readFile(patternFile, "utf8");
+      const patternDoc = parseYaml(patternRaw);
+      const patternResult = PatternYamlSchema.safeParse(patternDoc);
+      if (!patternResult.success) {
+        for (const issue of patternResult.error.issues) {
+          const field = issue.path.join(".");
+          errors.push(`${patternRelPath}: ${field ? field + ": " : ""}${issue.message}`);
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`${patternRelPath}: ${msg}`);
+    }
+  }
+
   return { file: relPath, errors, warnings };
 }
 
-async function validateSuite(filePath: string, evaluatorFiles: Set<string>): Promise<FileResult> {
+async function validateSuite(
+  filePath: string,
+  evaluatorIds: Set<string>
+): Promise<FileResult> {
   const relPath = path.relative(REPO_ROOT, filePath);
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -189,40 +251,32 @@ async function validateSuite(filePath: string, evaluatorFiles: Set<string>): Pro
     return { file: relPath, errors: ["could not read file"], warnings };
   }
 
-  const fm = splitFrontmatter(raw);
-  if (!fm) {
-    return {
-      file: relPath,
-      errors: ["file must start with YAML frontmatter between --- lines"],
-      warnings,
-    };
-  }
-
   let doc: unknown;
   try {
-    doc = parseYaml(fm.yaml);
+    doc = parseYaml(raw);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { file: relPath, errors: [`invalid YAML in frontmatter: ${msg}`], warnings };
+    return { file: relPath, errors: [`invalid YAML: ${msg}`], warnings };
   }
 
-  const result = SuiteFrontmatterSchema.safeParse(doc);
+  const result = SuiteYamlSchema.safeParse(doc);
   if (!result.success) {
     for (const issue of result.error.issues) {
       const field = issue.path.join(".");
       errors.push(`${field ? field + ": " : ""}${issue.message}`);
     }
+    return { file: relPath, errors, warnings };
   }
 
-  if (result.success) {
-    for (const evId of result.data.evaluators) {
-      if (!evaluatorFiles.has(evId)) {
-        errors.push(`evaluators[]: "${evId}" does not match any evaluator file in this tree`);
-      }
+  // Check that all referenced evaluators exist
+  for (const evId of result.data.evaluators) {
+    if (!evaluatorIds.has(evId)) {
+      errors.push(`evaluators[]: "${evId}" does not match any evaluator`);
     }
-    if (!result.data.name?.trim()) {
-      warnings.push("name is empty (recommended for display)");
-    }
+  }
+
+  if (!result.data.description?.trim()) {
+    warnings.push("description is empty (recommended for display)");
   }
 
   return { file: relPath, errors, warnings };
@@ -231,7 +285,7 @@ async function validateSuite(filePath: string, evaluatorFiles: Set<string>): Pro
 async function main(): Promise<void> {
   const allResults: FileResult[] = [];
   const knownIds = new Map<string, string>();
-  const stagedEvaluatorPaths = getStagedEvaluatorPaths();
+
   let atlasTechniqueIds: Set<string>;
   try {
     atlasTechniqueIds = await loadAtlasTechniqueIdSet();
@@ -241,36 +295,32 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Validate all evaluators
   for (const tree of EVALUATOR_TREES) {
-    let evalFiles: string[];
-    try {
-      evalFiles = (await readdir(tree.evaluatorsDir))
-        .filter((f) => f.endsWith(".md"))
-        .map((f) => path.join(tree.evaluatorsDir, f));
-    } catch {
-      console.error(`  Could not read evaluators directory: ${tree.evaluatorsDir}`);
-      process.exit(1);
+    const evaluatorFiles = await findEvaluatorFiles(tree.evaluatorsDir);
+
+    for (const fp of evaluatorFiles) {
+      allResults.push(await validateEvaluator(fp, knownIds, atlasTechniqueIds));
     }
+  }
 
-    const evaluatorIdsByFilestem = new Set(evalFiles.map((f) => path.basename(f, ".md")));
+  // Collect all evaluator IDs for suite validation
+  const allEvaluatorIds = new Set(knownIds.keys());
 
-    for (const fp of evalFiles) {
-      allResults.push(
-        await validateEvaluator(fp, tree, knownIds, stagedEvaluatorPaths, atlasTechniqueIds)
-      );
-    }
-
+  // Validate all suites
+  for (const tree of EVALUATOR_TREES) {
     let suiteFiles: string[];
     try {
-      suiteFiles = (await readdir(tree.suitesDir))
-        .filter((f) => f.endsWith(".md"))
+      const entries = await readdir(tree.suitesDir);
+      suiteFiles = entries
+        .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
         .map((f) => path.join(tree.suitesDir, f));
     } catch {
       suiteFiles = [];
     }
 
     for (const fp of suiteFiles) {
-      allResults.push(await validateSuite(fp, evaluatorIdsByFilestem));
+      allResults.push(await validateSuite(fp, allEvaluatorIds));
     }
   }
 
@@ -315,7 +365,7 @@ async function main(): Promise<void> {
   if (totalWarnings > 0) {
     console.log(`\n  Warnings found — consider addressing them, but commit is allowed.\n`);
   } else {
-    console.log(`\n  All skills files are valid.\n`);
+    console.log(`\n  All evaluator/suite files are valid.\n`);
   }
 }
 

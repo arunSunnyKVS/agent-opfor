@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -29,8 +29,8 @@ const GENERATED_README = `# Generated evaluator mirror
 
 Do **not** edit files here. Author changes under repo root:
 
-- \`evaluators/${"{category}"}/\`
-- \`suites/${"{category}"}/\`
+- \`evaluators/\${"{category}"}/\`
+- \`suites/\${"{category}"}/\`
 
 Then run:
 
@@ -39,53 +39,62 @@ npm run sync:skills-evaluators
 \`\`\`
 `;
 
-async function listMdFiles(dir: string): Promise<string[]> {
-  const names = await readdir(dir);
-  return names.filter((f) => f.endsWith(".md")).sort((a, b) => a.localeCompare(b));
+/**
+ * Recursively list all files in a directory.
+ */
+async function listAllFiles(dir: string, baseDir?: string): Promise<string[]> {
+  const base = baseDir ?? dir;
+  const files: string[] = [];
+
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return files;
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry);
+    const s = await stat(fullPath);
+    if (s.isDirectory()) {
+      files.push(...(await listAllFiles(fullPath, base)));
+    } else {
+      files.push(path.relative(base, fullPath));
+    }
+  }
+
+  return files.sort((a, b) => a.localeCompare(b));
 }
 
 function hashContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
-/** Keep `---` frontmatter at file start; banner lives in the markdown body. */
-function withGeneratedBanner(content: string, srcRel: string): string {
-  if (content.includes("GENERATED — source:")) return content;
-  const lines = content.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return content;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") {
-      const banner = `<!-- GENERATED — source: ${srcRel} — do not edit -->`;
-      return [...lines.slice(0, i + 1), "", banner, ...lines.slice(i + 1)].join("\n");
-    }
-  }
-  return content;
-}
-
-async function syncDir(
+/**
+ * Sync an entire directory tree (recursively).
+ */
+async function syncDirTree(
   srcDir: string,
   destDir: string,
   label: string
 ): Promise<{ written: number; stale: string[] }> {
-  await mkdir(destDir, { recursive: true });
-  const srcFiles = await listMdFiles(srcDir);
   const stale: string[] = [];
   let written = 0;
 
-  const destExisting = new Set(await listMdFiles(destDir).catch(() => []));
+  // Get all files from source
+  const srcFiles = await listAllFiles(srcDir);
+  const destFiles = new Set(await listAllFiles(destDir));
 
-  for (const file of srcFiles) {
-    const srcPath = path.join(srcDir, file);
-    const destPath = path.join(destDir, file);
+  for (const relPath of srcFiles) {
+    const srcPath = path.join(srcDir, relPath);
+    const destPath = path.join(destDir, relPath);
     const content = await readFile(srcPath, "utf8");
-    const srcRel = path.relative(REPO_ROOT, srcPath);
-    const out = withGeneratedBanner(content, srcRel);
 
     let needsWrite = true;
-    if (destExisting.has(file)) {
+    if (destFiles.has(relPath)) {
       try {
         const existing = await readFile(destPath, "utf8");
-        if (hashContent(existing) === hashContent(out)) {
+        if (hashContent(existing) === hashContent(content)) {
           needsWrite = false;
         } else {
           stale.push(path.relative(REPO_ROOT, destPath));
@@ -98,13 +107,15 @@ async function syncDir(
     }
 
     if (!CHECK_ONLY && needsWrite) {
-      await writeFile(destPath, out, "utf8");
+      await mkdir(path.dirname(destPath), { recursive: true });
+      await writeFile(destPath, content, "utf8");
       written++;
     }
-    destExisting.delete(file);
+    destFiles.delete(relPath);
   }
 
-  for (const orphan of destExisting) {
+  // Remove orphan files in destination
+  for (const orphan of destFiles) {
     const orphanPath = path.join(destDir, orphan);
     stale.push(path.relative(REPO_ROOT, orphanPath));
     if (!CHECK_ONLY) {
@@ -137,12 +148,12 @@ async function syncCategory(category: EvaluatorCategory): Promise<string[]> {
     await writeFile(path.join(genRoot, "README.md"), readme, "utf8");
   }
 
-  const ev = await syncDir(
+  const ev = await syncDirTree(
     getEvaluatorsDir(category),
     getGeneratedEvaluatorsDir(category),
     `${category} evaluators`
   );
-  const su = await syncDir(
+  const su = await syncDirTree(
     getSuitesDir(category),
     getGeneratedSuitesDir(category),
     `${category} suites`
@@ -167,6 +178,23 @@ async function removeLegacySkillDirs(): Promise<void> {
   }
 }
 
+async function cleanGeneratedDirs(): Promise<void> {
+  for (const category of CATEGORIES) {
+    const genRoot = path.join(
+      REPO_ROOT,
+      "skills",
+      `${category === "mcp" ? "mcp" : "agent"}-redteaming`,
+      "opfor-setup",
+      GENERATED_DIRNAME
+    );
+    try {
+      await rm(genRoot, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+}
+
 async function main(): Promise<void> {
   console.log(
     CHECK_ONLY ? "Checking skills _generated mirrors…" : "Syncing skills _generated mirrors…"
@@ -174,6 +202,7 @@ async function main(): Promise<void> {
 
   if (!CHECK_ONLY) {
     await removeLegacySkillDirs();
+    await cleanGeneratedDirs();
   }
 
   const allStale: string[] = [];

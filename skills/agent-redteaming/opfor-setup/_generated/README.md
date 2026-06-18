@@ -2,8 +2,8 @@
 
 Do **not** edit files here. Author changes under repo root:
 
-- `evaluators/agent/`
-- `suites/agent/`
+- `evaluators/${"agent"}/`
+- `suites/${"agent"}/`
 
 Then run:
 
