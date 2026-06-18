@@ -9,6 +9,7 @@ export { Opfor } from "./opfor.js";
 
 // Functional API
 export { execute } from "./execute.js";
+export { auto } from "./auto.js";
 export { report, type ReportBuilder } from "./report.js";
 export { listSuites, listEvaluators } from "./catalog.js";
 
@@ -44,6 +45,16 @@ export type {
   SuiteInfo,
   EvaluatorInfo,
   ListEvaluatorsOptions,
+
+  // Autonomous mode
+  AutoOptions,
+  AutoTargetConfig,
+  AutoModelsConfig,
+  AutoLimitsConfig,
+  AutoResults,
+  AutoFinding,
+  AutoTurn,
+  AutoProgressEvent,
 
   // Re-exports from core
   TelemetryConfig,

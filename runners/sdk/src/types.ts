@@ -191,6 +191,164 @@ export interface ListEvaluatorsOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Autonomous Mode Types
+// ---------------------------------------------------------------------------
+
+/** Target configuration for autonomous mode (HTTP endpoint only). */
+export interface AutoTargetConfig {
+  /** Target HTTP endpoint URL. */
+  url: string;
+  /** Display name (defaults to endpoint host). */
+  name?: string;
+  /** Bearer API key sent as Authorization header. */
+  apiKey?: string;
+  /** Extra static headers merged into every request. */
+  headers?: Record<string, string>;
+  /**
+   * - "stateless" (default): replay full conversation each turn
+   * - "stateful": send only latest prompt + session id
+   */
+  stateful?: boolean;
+  /** Field name carrying the session id (stateful mode). */
+  sessionField?: string;
+  /** Dot-path where the prompt is written in the request body. */
+  promptPath?: string;
+  /** Dot-path where the reply is read from the response body. */
+  responsePath?: string;
+  /** Model value sent in OpenAI-shape requests. */
+  model?: string;
+}
+
+/** Model configuration for autonomous mode. */
+export interface AutoModelsConfig {
+  /** Commander model (alias like "opus"/"sonnet" or full id). Default: "opus" */
+  commander?: string;
+  /** Operator subagent model. Default: "sonnet" */
+  operator?: string;
+  /** Scout subagent model. Default: "haiku" */
+  scout?: string;
+  /** Verifier model id (defaults to commander). */
+  verifier?: string;
+}
+
+/** Limits configuration for autonomous mode. */
+export interface AutoLimitsConfig {
+  /** Max parallel operator subagents. Default: 6 */
+  maxOperators?: number;
+  /** Hard ceiling on SDK agentic turns. Default: 120 */
+  maxTurns?: number;
+  /** Per-thread depth ceiling. Default: 25 */
+  maxThreadTurns?: number;
+  /** Hard ceiling on total attack threads. Default: 40 */
+  maxTotalThreads?: number;
+  /** Hard ceiling on forks per thread. Default: 4 */
+  maxForksPerThread?: number;
+  /** Deterministic ceiling on total target sends. */
+  maxTotalSends?: number;
+  /** Max exploration generations. Default: 3 */
+  maxDepth?: number;
+  /** Leads expanded per wave. Default: 4 */
+  maxLeadsPerWave?: number;
+  /** Max benign recon probes. Default: 8 */
+  maxReconProbes?: number;
+  /** Hard USD budget; run finalizes when reached. Default: 10 */
+  budgetUsd?: number;
+}
+
+/** Options for autonomous red-team mode. */
+export interface AutoOptions {
+  /** Target agent configuration. */
+  target: AutoTargetConfig;
+  /** Free-text attack objective. */
+  objective: string;
+  /** Model configuration. */
+  models?: AutoModelsConfig;
+  /** Limits and budget configuration. */
+  limits?: AutoLimitsConfig;
+  /** Enable the independent second-model verifier. Default: false */
+  verify?: boolean;
+  /** Dispatch operators one-at-a-time (for rate-limited targets). Default: false */
+  sequential?: boolean;
+  /** Output directory for reports. Default: ".opfor/reports" */
+  outputDir?: string;
+  /** Progress callback for streaming updates. */
+  onProgress?: (event: AutoProgressEvent) => void;
+}
+
+/** Progress events during autonomous execution. */
+export type AutoProgressEvent =
+  | { type: "line"; message: string }
+  | { type: "recon_start" }
+  | { type: "recon_done"; fingerprint: string; weakPoints: string[] }
+  | { type: "thread_start"; threadId: string; vulnClass: string }
+  | { type: "thread_turn"; threadId: string; turnIndex: number; prompt: string }
+  | { type: "thread_done"; threadId: string; verdict: "PASS" | "FAIL" | "ERROR" }
+  | { type: "finding"; findingId: string; vulnClass: string; severity: string }
+  | { type: "complete"; outcome: string };
+
+/** A turn in an autonomous attack thread. */
+export interface AutoTurn {
+  turnIndex: number;
+  prompt: string;
+  response: string;
+  persona?: string;
+  strategy?: string;
+  score?: number;
+}
+
+/** A finding from an autonomous run. */
+export interface AutoFinding {
+  id: string;
+  vulnClassId: string;
+  name: string;
+  severity: "critical" | "high" | "medium" | "low";
+  standards?: Record<string, string>;
+  threadId: string;
+  strategy: string;
+  personas: string[];
+  verdict: "PASS" | "FAIL" | "ERROR";
+  confidence: number;
+  evidence: string;
+  reasoning: string;
+  turns: AutoTurn[];
+}
+
+/** Results from an autonomous red-team run. */
+export interface AutoResults {
+  id: string;
+  timestamp: string;
+  target: { name: string; endpoint: string };
+  objective: string;
+  outcome: "achieved" | "partially-achieved" | "not-achieved" | "inconclusive";
+  models: {
+    commander: string;
+    operator: string;
+  };
+  truncated: boolean;
+  truncationReason?: string;
+  totalCostUsd?: number;
+  summary: {
+    threads: number;
+    confirmed: number;
+    defended: number;
+    errors: number;
+    attackSuccessRate: number;
+  };
+  recon: {
+    fingerprint: string;
+    guardrails: string[];
+    weakPoints: string[];
+  };
+  findings: AutoFinding[];
+  recommendations: string[];
+  narrative: string;
+  /** Path to generated HTML report. */
+  htmlReportPath?: string;
+  /** Path to generated JSON report. */
+  jsonReportPath?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Re-exports from core
 // ---------------------------------------------------------------------------
 

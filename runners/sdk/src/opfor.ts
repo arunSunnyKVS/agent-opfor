@@ -1,6 +1,12 @@
 import { execute } from "./execute.js";
 import { report, type ReportBuilder } from "./report.js";
-import type { OpforOptions, ExecuteOptions, ExecuteResults } from "./types.js";
+import type {
+  OpforOptions,
+  ExecuteOptions,
+  ExecuteResults,
+  AutoOptions,
+  AutoResults,
+} from "./types.js";
 
 /**
  * Opfor SDK client class.
@@ -42,6 +48,27 @@ export class Opfor {
     };
 
     return execute(fullOptions);
+  }
+
+  /**
+   * Run autonomous red-team testing against a target.
+   *
+   * Unlike `execute()` which runs predefined evaluators, `auto()` uses an
+   * AI agent to autonomously discover and exploit vulnerabilities.
+   *
+   * @example
+   * ```typescript
+   * const results = await opfor.auto({
+   *   target: { url: "https://api.example.com/chat" },
+   *   objective: "Find jailbreaks and data leaks",
+   *   limits: { budgetUsd: 5 },
+   * });
+   * ```
+   */
+  async auto(options: AutoOptions): Promise<AutoResults> {
+    // Lazy import to avoid loading @anthropic-ai/claude-agent-sdk unless needed
+    const { auto } = await import("./auto.js");
+    return auto(options);
   }
 
   /**
