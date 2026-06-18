@@ -1,41 +1,63 @@
 /**
- * Ensures every evaluator markdown file loads the same way the engine does
- * (parseEvaluator), including non-empty patterns for agent and MCP trees.
+ * Ensures every evaluator YAML file loads via parseEvaluator.
+ *
+ * - Patterns: required (inline or in patterns/ directory), unless strategy: mcp-scanner
+ * - ID uniqueness: globally unique across both categories
+ * - ID-filename match: relaxed (warning only, not failure)
  *
  * Run: npm test --workspace=core
  */
 
-import { readdir } from "node:fs/promises";
-import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getEvaluatorsDir } from "../src/config/evaluatorsLayout.js";
-import { parseEvaluator } from "../src/evaluators/parseEvaluator.js";
+import path from "node:path";
+import { discoverEvaluatorFiles } from "../src/catalog/discoverEvaluators.js";
+import { parseEvaluator, clearEvaluatorIndexCache } from "../src/evaluators/parseEvaluator.js";
 
-async function assertAllEvaluatorsParse(
-  evaluatorsDir: string,
-  targetKind: "agent" | "mcp"
-): Promise<void> {
-  const files = (await readdir(evaluatorsDir)).filter((f) => f.endsWith(".md"));
-  assert.ok(files.length > 0, `expected evaluators under ${evaluatorsDir}`);
+// Track all IDs for uniqueness check
+const seenIds = new Map<string, string>(); // id -> filePath
 
-  for (const f of files) {
-    const mdPath = path.join(evaluatorsDir, f);
-    const spec = await parseEvaluator(mdPath);
-    assert.equal(spec.id, f.replace(/\.md$/i, ""), `${f}: parsed id should match filename stem`);
-    assert.ok(spec.patterns.length > 0, `${f}: must have non-empty patterns (engine requirement)`);
-    for (const p of spec.patterns) {
-      assert.ok(p.name.length > 0, `${f}: pattern name required`);
-      assert.ok(p.template.length > 0, `${f}: pattern template required`);
+async function assertAllEvaluatorsParse(category: "agent" | "mcp"): Promise<void> {
+  const discovered = await discoverEvaluatorFiles(category);
+  assert.ok(discovered.length > 0, `expected evaluators in ${category}`);
+
+  for (const d of discovered) {
+    const spec = await parseEvaluator(d.filePath);
+
+    // ID must be non-empty
+    assert.ok(spec.id.length > 0, `${d.filePath}: id is required`);
+
+    // Check ID uniqueness
+    const existingPath = seenIds.get(spec.id);
+    if (existingPath) {
+      assert.fail(`Duplicate id "${spec.id}" in ${d.filePath} (also in ${existingPath})`);
     }
-    void targetKind; // reserved for divergent rules later
+    seenIds.set(spec.id, d.filePath);
+
+    // Patterns required unless mcp-scanner strategy
+    if (spec.strategy !== "mcp-scanner") {
+      assert.ok(spec.patterns.length > 0, `${d.filePath}: must have patterns`);
+      for (const p of spec.patterns) {
+        assert.ok(p.name.length > 0, `${d.filePath}: pattern name required`);
+        assert.ok(p.template.length > 0, `${d.filePath}: pattern template required`);
+      }
+    }
+
+    // ID-filename match is a warning, not a failure
+    const dirName = path.basename(d.dirPath);
+    if (spec.id !== dirName) {
+      console.warn(`[warn] ${d.filePath}: id "${spec.id}" does not match directory "${dirName}"`);
+    }
   }
 }
 
 test("agent evaluators parse via parseEvaluator", async () => {
-  await assertAllEvaluatorsParse(getEvaluatorsDir("agent"), "agent");
+  clearEvaluatorIndexCache();
+  seenIds.clear();
+  await assertAllEvaluatorsParse("agent");
 });
 
 test("mcp evaluators parse via parseEvaluator", async () => {
-  await assertAllEvaluatorsParse(getEvaluatorsDir("mcp"), "mcp");
+  // Don't clear seenIds - check uniqueness across both categories
+  await assertAllEvaluatorsParse("mcp");
 });

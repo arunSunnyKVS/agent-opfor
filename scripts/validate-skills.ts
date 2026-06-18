@@ -14,7 +14,6 @@
  * Exit 1 — one or more hard errors found.
  */
 
-import { execSync } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,8 +23,6 @@ import { loadAtlasTechniqueIdSet } from "../core/src/standards/atlas.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
-
-const STAGED_ONLY = process.argv.includes("--staged");
 
 // Schema for evaluator.yaml files
 const EvaluatorYamlSchema = z.object({
@@ -82,28 +79,6 @@ interface FileResult {
   file: string;
   errors: string[];
   warnings: string[];
-}
-
-/** Get staged YAML files when --staged is set. */
-function getStagedPaths(): Set<string> | null {
-  if (!STAGED_ONLY) return null;
-  try {
-    const out = execSync("git diff --cached --name-only --diff-filter=ACMR", {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-    });
-    const paths = new Set<string>();
-    for (const line of out.split(/\r?\n/)) {
-      const p = line.trim();
-      if (!p.endsWith(".yaml") && !p.endsWith(".yml")) continue;
-      if (/^evaluators\/(agent|mcp)\//.test(p) || /^suites\/(agent|mcp)\//.test(p)) {
-        paths.add(p);
-      }
-    }
-    return paths;
-  } catch {
-    return new Set();
-  }
 }
 
 /** Recursively find all evaluator.yaml files in a directory. */
@@ -236,10 +211,7 @@ async function validateEvaluator(
   return { file: relPath, errors, warnings };
 }
 
-async function validateSuite(
-  filePath: string,
-  evaluatorIds: Set<string>
-): Promise<FileResult> {
+async function validateSuite(filePath: string, evaluatorIds: Set<string>): Promise<FileResult> {
   const relPath = path.relative(REPO_ROOT, filePath);
   const errors: string[] = [];
   const warnings: string[] = [];
