@@ -37,30 +37,42 @@ For contributors or testing unreleased changes:
 
 ```bash
 git clone https://github.com/KeyValueSoftwareSystems/opfor.git
-cd opfor/extension
+cd opfor
 npm install
-npm run build:catalog
+npm run build:catalog --workspace=@opfor/extension
 ```
 
-Then `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select the `opfor/extension/` folder.
+Then `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select the `runners/extension/` folder.
 
 ---
 
-## Configure LLM profiles
+## Configure LLM
 
-The extension uses **three LLM roles**, all configured in the popup settings panel and stored in `chrome.storage.local` on your machine:
+The extension uses a **single LLM configuration** for all operations (attack generation, judgment, and HTML parsing), configured in the popup and stored in `chrome.storage.local` on your machine.
 
-| Role            | What it does                                                     |
-| --------------- | ---------------------------------------------------------------- |
-| **Attacker**    | Generates adversarial prompts per turn                           |
-| **Judge**       | Scores the transcript pass / fail                                |
-| **HTML reader** | Parses page snapshots to locate the chat input and response area |
+### Main settings
 
-Each role accepts any OpenAI-compatible provider — OpenAI, Groq, Anthropic via proxy, LiteLLM, OpenRouter, Ollama, etc. Set `baseUrl`, `model`, and `apiKey` per role.
+| Setting      | Description                                                                     |
+| ------------ | ------------------------------------------------------------------------------- |
+| **Provider** | OpenAI, Anthropic, Google, Groq, DeepSeek, Azure, or Custom (OpenAI-compatible) |
+| **Model**    | Model name (dropdown shows common options, or type your own)                    |
+| **API Key**  | Your API key for the selected provider                                          |
 
 ![Settings panel](assets/screenshots/extension-settings.png) <!-- TODO: screenshot -->
 
-> Use cheap, fast models for **attacker** and **HTML reader**. Use the strongest model you can afford for **judge** — verdict quality drives report accuracy.
+### Advanced settings (gear icon)
+
+| Setting                   | Description                                                            |
+| ------------------------- | ---------------------------------------------------------------------- |
+| **Turns per attack**      | Number of adversarial messages before judging (1-20, default 10)       |
+| **Wait after send**       | Seconds to wait for bot response (3-30s)                               |
+| **Message length limit**  | Max characters per attack message                                      |
+| **Agent description**     | Manual description of the chat agent (fallback when auto-detect fails) |
+| **Attack objective**      | Custom objective to guide the attacker LLM                             |
+| **Business use case**     | Additional context about the target agent                              |
+| **Custom evaluator hint** | Extra guidance for the judge LLM                                       |
+
+> For best results, use a capable model like GPT-4o or Claude Sonnet. Verdict quality depends on the model's reasoning ability.
 
 ---
 
@@ -68,10 +80,11 @@ Each role accepts any OpenAI-compatible provider — OpenAI, Groq, Anthropic via
 
 1. Open the chat interface you want to test in a browser tab.
 2. Click the OPFOR icon.
-3. Pick a suite (e.g. `owasp-llm-top10`) or specific evaluators — same IDs as the CLI; see [evaluators reference](evaluators.md).
-4. Click **Start**.
-5. Watch the run log — the attacker types into the chat, the target replies, the judge scores each evaluator.
-6. Click **Download report** when done.
+3. Pick a **Security Suite** (e.g. OWASP LLM Top 10) or select "Custom Evaluators" to pick individual tests.
+4. Configure your **Provider**, **Model**, and **API Key**.
+5. Click **Execute**.
+6. Watch the run — the attacker types into the chat, the target replies, real-time bubbles show the conversation.
+7. When complete, view the verdict and **Download report**.
 
 ![Suite picker](assets/screenshots/extension-suite-picker.png) <!-- TODO: screenshot -->
 
@@ -83,15 +96,19 @@ The extension runs up to **20 turns per evaluator** (default 10). It stops a giv
 
 ## What it tests
 
-Same agent-redteam catalog as the CLI (six suites, ~50 evaluators). Pick by suite or by individual evaluator ID. Full reference: [evaluators.md](evaluators.md).
+Same agent-redteam catalog as the CLI. Pick by suite or select "Custom Evaluators" to choose individual tests. Full reference: [evaluators.md](evaluators.md).
 
 | Suite                     | Best for                                                    |
 | ------------------------- | ----------------------------------------------------------- |
 | `owasp-llm-top10`         | Prompt injection, jailbreaks, sensitive disclosure          |
 | `owasp-agentic-ai`        | Goal hijack, tool misuse, identity / memory poisoning       |
-| `owasp-api`               | BOLA, BFLA, PII via API tool calls                          |
+| `owasp-mcp-top10`         | MCP-specific vulnerabilities                                |
 | `eu-ai-act-bias`          | Demographic bias (age, gender, race, disability)            |
 | `output-trust-and-safety` | Hallucination, sycophancy, off-topic drift, ASCII smuggling |
+| `harmful-content`         | CBRN, malicious code, violence, self-harm, radicalization   |
+| `mitre-atlas`             | MITRE ATLAS adversarial ML techniques                       |
+| `pre-deploy-critical`     | Highest-severity failure modes for pre-deployment gates     |
+| `quick-smoke`             | Fast sanity check with key evaluators                       |
 
 ---
 
@@ -112,10 +129,3 @@ Same agent-redteam catalog as the CLI (six suites, ~50 evaluators). Pick by suit
 - The extension does not phone home.
 
 ---
-
-## Roadmap
-
-- Firefox Add-ons listing
-- Multi-turn session persistence across browser restarts
-- MCP server red-team mode in-browser
-- Manual selector hints for closed-shadow chat widgets

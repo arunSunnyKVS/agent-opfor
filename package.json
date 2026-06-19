@@ -9,7 +9,8 @@
     "core",
     "runners/cli",
     "runners/mcp",
-    "runners/extension"
+    "runners/extension",
+    "runners/sdk"
   ],
   "files": [
     "evaluators/",
@@ -22,19 +23,20 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "npm run sync:skills-evaluators && tsc -b core runners/cli runners/mcp && npm run extension:catalog && npm run build:core --workspace=@opfor/extension",
+    "build": "npm run build:catalog && tsc -b core runners/cli runners/mcp runners/sdk && npm run build:ui && npm run extension:catalog && npm run build:core --workspace=@opfor/extension",
+    "build:ui": "cd runners/cli/ui && npm install && npm run build",
     "clean": "rm -rf core/dist runners/*/dist core/*.tsbuildinfo runners/*/*.tsbuildinfo",
     "install:cli": "npm run build && npm install -g ./runners/cli",
     "test": "npm test --workspace=core",
-    "typecheck": "tsc -b core runners/cli runners/mcp",
+    "typecheck": "tsc -b core runners/cli runners/mcp runners/sdk",
     "extension:catalog": "npm run build:catalog --workspace=@opfor/extension",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "validate:skills": "tsx scripts/validate-skills.ts",
-    "sync:skills-evaluators": "tsx scripts/sync-skills-evaluators.ts",
-    "sync:skills-evaluators:check": "tsx scripts/sync-skills-evaluators.ts --check",
+    "build:catalog": "tsx scripts/build-catalog.ts",
+    "build:catalog:check": "tsx scripts/build-catalog.ts --check",
     "coverage:atlas": "tsx scripts/generate-atlas-coverage.ts",
     "report:pdf": "tsx scripts/generate-pdf-report.ts",
     "prepare": "husky"

@@ -7,7 +7,7 @@ export async function loadAttackCatalog() {
   const resp = await fetch(url);
   if (!resp.ok)
     throw new Error(
-      `Failed to load catalog.json (${resp.status}). Run: node extension/scripts/build-catalog.mjs`
+      `Failed to load catalog.json (${resp.status}). Run: node runners/extension/scripts/build-catalog.mjs`
     );
   cachedAttackCatalog = await resp.json();
   return cachedAttackCatalog;

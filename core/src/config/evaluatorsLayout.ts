@@ -4,9 +4,6 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(realpathSync(fileURLToPath(import.meta.url)));
 
-/** Subfolder under skills/.../opfor-setup — synced copies for npx skills add consumers. */
-export const GENERATED_DIRNAME = "_generated";
-
 export type EvaluatorCategory = "agent" | "mcp";
 
 export function getRepoRoot(): string {
@@ -27,17 +24,12 @@ export function getSkillName(category: EvaluatorCategory): string {
   return category === "mcp" ? "mcp-redteaming" : "agent-redteaming";
 }
 
-/** `skills/{agent|mcp}-redteaming/opfor-setup` — prompts and SKILL.md live here. */
+/** `skills/{agent|mcp}-redteaming/opfor-setup` — prompts, SKILL.md, and catalog.json live here. */
 export function getSkillOpforSetupRoot(category: EvaluatorCategory): string {
   return path.join(getRepoRoot(), "skills", getSkillName(category), "opfor-setup");
 }
 
-/** Generated mirror for skill installs: `.../opfor-setup/_generated/evaluators/`. */
-export function getGeneratedEvaluatorsDir(category: EvaluatorCategory): string {
-  return path.join(getSkillOpforSetupRoot(category), GENERATED_DIRNAME, "evaluators");
-}
-
-/** Generated mirror: `.../opfor-setup/_generated/suites/`. */
-export function getGeneratedSuitesDir(category: EvaluatorCategory): string {
-  return path.join(getSkillOpforSetupRoot(category), GENERATED_DIRNAME, "suites");
+/** Pre-built skill catalog: `.../opfor-setup/catalog.json` (written by scripts/build-catalog.ts). */
+export function getSkillCatalogPath(category: EvaluatorCategory): string {
+  return path.join(getSkillOpforSetupRoot(category), "catalog.json");
 }

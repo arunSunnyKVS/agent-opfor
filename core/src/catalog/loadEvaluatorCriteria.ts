@@ -1,18 +1,31 @@
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { getEvaluatorsDir } from "../config/evaluatorsLayout.js";
-import { splitYamlFrontmatter } from "../util/yamlFrontmatter.js";
+import { buildEvaluatorIndex } from "./discoverEvaluators.js";
 import type { EvaluatorCriteria } from "../run/judge.js";
 import { resolveStandardsFromFrontmatter } from "../evaluators/standards.js";
 
+// Cached index
+let evaluatorIndex: Map<string, { filePath: string }> | null = null;
+
+async function getIndex(): Promise<Map<string, { filePath: string }>> {
+  if (!evaluatorIndex) {
+    evaluatorIndex = await buildEvaluatorIndex();
+  }
+  return evaluatorIndex;
+}
+
 export async function loadEvaluatorCriteria(evaluatorId: string): Promise<EvaluatorCriteria> {
-  const dir = getEvaluatorsDir("mcp");
-  const raw = await readFile(path.join(dir, `${evaluatorId}.md`), "utf8");
-  const sp = splitYamlFrontmatter(raw);
-  if (!sp) throw new Error(`Evaluator ${evaluatorId}: missing YAML frontmatter`);
-  const doc = parseYaml(sp.yaml) as Record<string, unknown>;
+  const index = await getIndex();
+  const discovered = index.get(evaluatorId);
+
+  if (!discovered) {
+    throw new Error(`Evaluator "${evaluatorId}" not found`);
+  }
+
+  const raw = await readFile(discovered.filePath, "utf8");
+  const doc = parseYaml(raw) as Record<string, unknown>;
   const standards = resolveStandardsFromFrontmatter(doc);
+
   return {
     id: typeof doc.id === "string" ? doc.id : evaluatorId,
     name: typeof doc.name === "string" ? doc.name : evaluatorId,
@@ -23,4 +36,9 @@ export async function loadEvaluatorCriteria(evaluatorId: string): Promise<Evalua
     judgeInstructions:
       typeof doc.judge_instructions === "string" ? doc.judge_instructions : undefined,
   };
+}
+
+/** Clear cached index (for tests). */
+export function clearCriteriaCache(): void {
+  evaluatorIndex = null;
 }

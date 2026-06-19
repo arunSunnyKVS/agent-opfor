@@ -14,8 +14,9 @@ export interface AgentTargetConfig {
   type: "http-endpoint" | "local-script";
   endpoint?: string;
   requestFormat?: "auto" | "openai" | "json";
-  targetApiKey?: string;
-  targetModel?: string;
+  /** Env var name containing the API key (e.g., "TARGET_API_KEY") */
+  apiKeyEnv?: string;
+  model?: string;
   headers?: Record<string, string>;
   sessionIdField?: string;
   promptPath?: string;
@@ -116,6 +117,12 @@ export interface AttackSpec {
   attackObjective?: string;
   businessUseCase?: string;
   siteSnapshot?: string;
+  /**
+   * Telemetry-derived summary of real production traces (from `opfor setup`/curation).
+   * Threaded into the attacker so adaptive turns can mirror real user phrasing and
+   * target real flows. Set in generateAttacks; consumed by generateNextAdaptiveTurn.
+   */
+  traceContext?: string;
   maxMessageLength?: number;
   // agent target
   prompt?: string;

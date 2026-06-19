@@ -828,6 +828,41 @@
       .evals-count[data-zero="true"] {
         color: var(--fail-soft);
       }
+      .evals-search {
+        display: none;
+        padding: 8px 10px;
+        border-top: 1px solid var(--line);
+      }
+      .evals[data-open="true"] .evals-search {
+        display: block;
+      }
+      .evals-search input {
+        width: 100%;
+        padding: 6px 10px 6px 30px;
+        font-size: 12px;
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+        background: var(--bg-2);
+        color: var(--text);
+        outline: none;
+      }
+      .evals-search input:focus {
+        border-color: var(--accent);
+      }
+      .evals-search input::placeholder {
+        color: var(--muted-3);
+      }
+      .evals-search-wrap {
+        position: relative;
+      }
+      .evals-search-wrap .search-icon {
+        position: absolute;
+        left: 9px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted-3);
+        pointer-events: none;
+      }
       .evals-list {
         border-top: 1px solid var(--line);
         max-height: 200px;
@@ -836,6 +871,9 @@
       }
       .evals[data-open="true"] .evals-list {
         display: block;
+      }
+      .eval-item[data-hidden="true"] {
+        display: none;
       }
       .eval-item {
         display: flex;
@@ -1139,12 +1177,17 @@
         display: flex;
         flex-direction: column;
         gap: 3px;
+        max-width: 85%;
       }
       .bubble[data-who="attacker"] {
         align-items: flex-end;
+        align-self: flex-end;
+        margin-left: auto;
       }
       .bubble[data-who="agent"] {
         align-items: flex-start;
+        align-self: flex-start;
+        margin-right: auto;
       }
       .bubble .kicker {
         font-family: "Geist Mono", ui-monospace, monospace;
@@ -1165,7 +1208,6 @@
         font-size: 13.5px;
         line-height: 1.5;
         color: var(--text-2);
-        max-width: 92%;
         white-space: pre-wrap;
         word-break: break-word;
       }
@@ -2064,6 +2106,31 @@
               </button>
               <!-- hidden sentinel kept for popup.js backward compat -->
               <span id="evalsToggleAll" hidden></span>
+              <div class="evals-search">
+                <div class="evals-search-wrap">
+                  <svg
+                    class="search-icon"
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35" />
+                  </svg>
+                  <input
+                    id="evalsSearch"
+                    type="text"
+                    placeholder="Search evaluators..."
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </div>
+              </div>
               <div id="evalsList" class="evals-list"></div>
             </div>
           </div>

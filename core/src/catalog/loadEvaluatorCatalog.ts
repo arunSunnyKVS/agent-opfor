@@ -1,12 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { parse as parseYaml } from "yaml";
-import {
-  getEvaluatorsDir,
-  getSuitesDir,
-  type EvaluatorCategory,
-} from "../config/evaluatorsLayout.js";
-import { splitYamlFrontmatter } from "../util/yamlFrontmatter.js";
+import { type EvaluatorCategory } from "../config/evaluatorsLayout.js";
+import { discoverEvaluatorFiles, discoverSuiteFiles } from "./discoverEvaluators.js";
 import { resolveStandardsFromFrontmatter } from "../evaluators/standards.js";
 import { loadAtlasTechniqueIdSet } from "../standards/atlas.js";
 import type { StandardsMap } from "../evaluators/schema.js";
@@ -16,6 +11,7 @@ export interface EvaluatorMeta {
   name: string;
   severity: "critical" | "high" | "medium" | "low";
   standards?: StandardsMap;
+  surfaces?: Array<"agent" | "browser" | "mcp">;
 }
 
 export interface SuiteMeta {
@@ -23,6 +19,8 @@ export interface SuiteMeta {
   name: string;
   description: string;
   evaluatorIds: string[];
+  /** True if this suite was derived from standards tags, not from a file. */
+  derived?: boolean;
 }
 
 function normalizeSeverity(s: string): EvaluatorMeta["severity"] {
@@ -31,69 +29,173 @@ function normalizeSeverity(s: string): EvaluatorMeta["severity"] {
   return "high";
 }
 
+/**
+ * Derive standard suites from evaluator standards tags.
+ * E.g., all evaluators with standards.owasp-llm become part of "owasp-llm-top10".
+ */
+function deriveStandardSuites(evaluators: EvaluatorMeta[]): SuiteMeta[] {
+  const standardGroups: Record<string, string[]> = {
+    "owasp-llm": [],
+    "owasp-agentic": [],
+    "owasp-mcp": [],
+    atlas: [],
+    "eu-ai-act": [],
+  };
+
+  for (const ev of evaluators) {
+    if (!ev.standards) continue;
+    for (const key of Object.keys(ev.standards)) {
+      if (key in standardGroups) {
+        standardGroups[key].push(ev.id);
+      }
+    }
+  }
+
+  const suites: SuiteMeta[] = [];
+
+  if (standardGroups["owasp-llm"].length > 0) {
+    suites.push({
+      id: "owasp-llm-top10",
+      name: "OWASP LLM Top 10",
+      description: "Security testing for LLM applications based on OWASP LLM Top 10",
+      evaluatorIds: standardGroups["owasp-llm"],
+      derived: true,
+    });
+  }
+
+  if (standardGroups["owasp-agentic"].length > 0) {
+    suites.push({
+      id: "owasp-agentic-ai",
+      name: "OWASP Agentic AI",
+      description: "Security testing for agentic AI systems",
+      evaluatorIds: standardGroups["owasp-agentic"],
+      derived: true,
+    });
+  }
+
+  if (standardGroups["owasp-mcp"].length > 0) {
+    suites.push({
+      id: "owasp-mcp-top10",
+      name: "OWASP MCP Top 10",
+      description: "Security testing for MCP servers",
+      evaluatorIds: standardGroups["owasp-mcp"],
+      derived: true,
+    });
+  }
+
+  if (standardGroups["atlas"].length > 0) {
+    suites.push({
+      id: "mitre-atlas",
+      name: "MITRE ATLAS",
+      description: "Adversarial threat landscape for AI systems",
+      evaluatorIds: standardGroups["atlas"],
+      derived: true,
+    });
+  }
+
+  if (standardGroups["eu-ai-act"].length > 0) {
+    suites.push({
+      id: "eu-ai-act-bias",
+      name: "EU AI Act Bias",
+      description: "Bias testing for EU AI Act compliance",
+      evaluatorIds: standardGroups["eu-ai-act"],
+      derived: true,
+    });
+  }
+
+  return suites;
+}
+
 export async function loadEvaluatorCatalog(category: EvaluatorCategory): Promise<{
   evaluators: EvaluatorMeta[];
   suites: SuiteMeta[];
 }> {
-  const validateAtlas = process.env.OPFOR_VALIDATE_ATLAS === "1";
+  const validateAtlas = process.env.OPFOR_VALIDATE_ATLAS !== "0"; // On by default now
   const atlasTechniqueIds = validateAtlas ? await loadAtlasTechniqueIdSet() : null;
 
-  const evalDir = getEvaluatorsDir(category);
-  const suitesDir = getSuitesDir(category);
-
-  const suiteFiles = (await readdir(suitesDir)).filter((f) => f.endsWith(".md"));
-  const suites: SuiteMeta[] = [];
-  for (const f of suiteFiles) {
-    const raw = await readFile(path.join(suitesDir, f), "utf8");
-    const sp = splitYamlFrontmatter(raw);
-    if (!sp) throw new Error(`Suite ${f}: missing YAML frontmatter (leading --- block)`);
-    const doc = parseYaml(sp.yaml) as Record<string, unknown>;
-    const id = doc.id;
-    if (typeof id !== "string" || !id.trim()) {
-      throw new Error(`Suite ${f}: frontmatter must set id (string)`);
-    }
-    const ev = doc.evaluators;
-    if (!Array.isArray(ev) || ev.some((x) => typeof x !== "string")) {
-      throw new Error(`Suite ${f}: frontmatter must set evaluators: [string, ...]`);
-    }
-    suites.push({
-      id: id.trim(),
-      name: typeof doc.name === "string" ? doc.name : id.trim(),
-      description: typeof doc.description === "string" ? doc.description : "",
-      evaluatorIds: ev as string[],
-    });
-  }
-  suites.sort((a, b) => a.id.localeCompare(b.id));
-
-  const evalFiles = (await readdir(evalDir)).filter((f) => f.endsWith(".md"));
+  // Discover and load evaluators
+  const discoveredEvaluators = await discoverEvaluatorFiles(category);
   const evaluators: EvaluatorMeta[] = [];
-  for (const f of evalFiles) {
-    const mdPath = path.join(evalDir, f);
-    const raw = await readFile(mdPath, "utf8");
-    const sp = splitYamlFrontmatter(raw);
-    if (!sp) throw new Error(`Evaluator ${f}: missing YAML frontmatter`);
-    const doc = parseYaml(sp.yaml) as Record<string, unknown>;
-    const id =
-      typeof doc.id === "string" && doc.id.trim() ? doc.id.trim() : f.replace(/\.md$/i, "");
-    const standards = resolveStandardsFromFrontmatter(doc);
-    const atlasId = standards?.atlas;
-    if (atlasTechniqueIds && typeof atlasId === "string" && atlasId.trim()) {
-      const normalized = atlasId.trim();
-      if (!/^AML\.T\d{4}(\.\d{3})?$/.test(normalized)) {
-        throw new Error(`Evaluator ${f}: standards.atlas has invalid format "${normalized}"`);
+
+  for (const d of discoveredEvaluators) {
+    try {
+      const raw = await readFile(d.filePath, "utf8");
+      const doc = parseYaml(raw) as Record<string, unknown>;
+
+      const id = typeof doc.id === "string" && doc.id.trim() ? doc.id.trim() : "";
+      if (!id) continue;
+
+      const standards = resolveStandardsFromFrontmatter(doc);
+
+      // Validate ATLAS ID
+      const atlasId = standards?.atlas;
+      if (atlasTechniqueIds && typeof atlasId === "string" && atlasId.trim()) {
+        const normalized = atlasId.trim();
+        if (!/^AML\.T\d{4}(\.\d{3})?$/.test(normalized)) {
+          throw new Error(
+            `Evaluator ${d.filePath}: standards.atlas has invalid format "${normalized}"`
+          );
+        }
+        if (!atlasTechniqueIds.has(normalized)) {
+          throw new Error(
+            `Evaluator ${d.filePath}: standards.atlas unknown technique id "${normalized}"`
+          );
+        }
       }
-      if (!atlasTechniqueIds.has(normalized)) {
-        throw new Error(`Evaluator ${f}: standards.atlas unknown technique id "${normalized}"`);
-      }
+
+      const surfaces = Array.isArray(doc.surfaces)
+        ? (doc.surfaces as string[]).filter(
+            (s): s is "agent" | "browser" | "mcp" => s === "agent" || s === "browser" || s === "mcp"
+          )
+        : undefined;
+
+      evaluators.push({
+        id,
+        name: typeof doc.name === "string" ? doc.name : id,
+        ...(standards ? { standards } : {}),
+        severity: normalizeSeverity(typeof doc.severity === "string" ? doc.severity : "high"),
+        ...(surfaces?.length ? { surfaces } : {}),
+      });
+    } catch (e) {
+      console.error(`Failed to load evaluator ${d.filePath}: ${e}`);
     }
-    evaluators.push({
-      id,
-      name: typeof doc.name === "string" ? doc.name : id,
-      ...(standards ? { standards } : {}),
-      severity: normalizeSeverity(typeof doc.severity === "string" ? doc.severity : "high"),
-    });
   }
+
   evaluators.sort((a, b) => a.id.localeCompare(b.id));
+
+  // Discover and load curated suites
+  const discoveredSuites = await discoverSuiteFiles(category);
+  const suites: SuiteMeta[] = [];
+
+  for (const d of discoveredSuites) {
+    try {
+      const raw = await readFile(d.filePath, "utf8");
+      const doc = parseYaml(raw) as Record<string, unknown>;
+
+      const id = typeof doc.id === "string" ? doc.id.trim() : "";
+      if (!id) continue;
+
+      const ev = doc.evaluators;
+      if (!Array.isArray(ev) || ev.some((x) => typeof x !== "string")) {
+        throw new Error(`Suite ${d.filePath}: must have evaluators: [string, ...]`);
+      }
+
+      suites.push({
+        id,
+        name: typeof doc.name === "string" ? doc.name : id,
+        description: typeof doc.description === "string" ? doc.description : "",
+        evaluatorIds: ev as string[],
+      });
+    } catch (e) {
+      console.error(`Failed to load suite ${d.filePath}: ${e}`);
+    }
+  }
+
+  // Add derived standard suites
+  const derivedSuites = deriveStandardSuites(evaluators);
+  suites.push(...derivedSuites);
+
+  suites.sort((a, b) => a.id.localeCompare(b.id));
 
   return { evaluators, suites };
 }
