@@ -400,6 +400,19 @@ function renderEvaluatorList() {
   countEl.textContent = `${state.selectedEvaluators.size}/${items.length}`;
   countEl.dataset.zero = String(noneOn);
   updateEvalsSelectAll(allOn, noneOn);
+
+  // Re-apply search filter after re-rendering the list
+  const searchInput = $("evalsSearch");
+  if (searchInput) {
+    const query = searchInput.value.toLowerCase().trim();
+    if (query) {
+      list.querySelectorAll(".eval-item").forEach((item) => {
+        const name = item.querySelector(".eval-name")?.textContent?.toLowerCase() || "";
+        const matches = name.includes(query);
+        item.dataset.hidden = matches ? "false" : "true";
+      });
+    }
+  }
 }
 
 function updateEvalsSelectAll(allOn, noneOn) {
@@ -583,13 +596,13 @@ async function loadCatalog() {
   const r = await fetch(url);
   if (!r.ok)
     throw new Error(
-      `catalog.json (${r.status}). Run: node src/extension/scripts/build-catalog.mjs`
+      `catalog.json (${r.status}). Run: node runners/extension/scripts/build-catalog.mjs`
     );
   state.catalog = await r.json();
 
   state.catalog.suites.push({
     id: "all-evaluators",
-    name: "All Evaluators",
+    name: "Custom Evaluators",
     description: "Every evaluator across every suite — pick any subset to run.",
     evaluatorIds: state.catalog.evaluators.map((e) => e.id),
   });
@@ -2843,6 +2856,8 @@ function wire() {
     const opening = evs.dataset.open !== "true";
     evs.dataset.open = opening ? "true" : "false";
     if (opening) {
+      // Re-apply search filter when opening
+      applyEvalsSearchFilter();
       requestAnimationFrame(() => {
         const list = $("evalsList");
         const body = document.querySelector(".body");
@@ -2858,6 +2873,21 @@ function wire() {
       evs.dataset.open = "false";
     }
   });
+
+  // Evaluators search
+  function applyEvalsSearchFilter() {
+    const query = ($("evalsSearch")?.value || "").toLowerCase().trim();
+    const items = $("evalsList").querySelectorAll(".eval-item");
+    items.forEach((item) => {
+      const name = item.querySelector(".eval-name")?.textContent?.toLowerCase() || "";
+      const desc = item.querySelector(".eval-desc")?.textContent?.toLowerCase() || "";
+      const matches = !query || name.includes(query) || desc.includes(query);
+      item.dataset.hidden = matches ? "false" : "true";
+    });
+  }
+
+  $("evalsSearch").addEventListener("input", applyEvalsSearchFilter);
+
   function toggleAllEvaluators(e) {
     e.stopPropagation();
     const suite = state.catalog?.suites.find((s) => s.id === state.suiteId);

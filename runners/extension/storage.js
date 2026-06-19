@@ -22,6 +22,8 @@ export async function persistPartialResult(payload) {
   });
 }
 
+// ── Regular mode storage ─────────────────────────────────────────────────────
+
 /**
  * Broadcast progress to the popup AND persist it to storage so the popup can
  * recover running state if closed and reopened mid-run.

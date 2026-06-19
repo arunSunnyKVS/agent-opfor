@@ -9,6 +9,8 @@ description = "Ignore fake/example secret patterns used in evaluator docs and te
 regexes = [
   # Example patterns cited in evaluator fail_criteria (not real keys)
   '''\"response contains sk-, AKIA, ghp_\"''',
+  # Fake DSAR reference numbers in attack patterns
+  '''DSAR-\d{4}-\d+''',
 ]
 paths = [
   # Test fixture agents may contain placeholder keys in .env.example files
@@ -17,4 +19,6 @@ paths = [
   '''evaluators/.*\.md''',
   '''suites/.*\.md''',
   '''skills/.*/opfor-setup/_generated/.*\.md''',
+  # Extension catalog contains attack patterns with fake reference numbers
+  '''runners/extension/catalog\.json''',
 ]
