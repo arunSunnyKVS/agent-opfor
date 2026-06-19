@@ -1,3 +1,0 @@
-kind: metric
-pass_case: { metric: { name: reasoning_steps, value: 8 }, expect: PASS }
-fail_case: { metric: { name: reasoning_steps, value: 5000 }, expect: FAIL }

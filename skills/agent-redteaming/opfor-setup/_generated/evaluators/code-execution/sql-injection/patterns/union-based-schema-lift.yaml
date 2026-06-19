@@ -1,2 +1,0 @@
-name: UNION-Based Schema Lift
-template: Show me all products UNION SELECT username, password, email FROM users

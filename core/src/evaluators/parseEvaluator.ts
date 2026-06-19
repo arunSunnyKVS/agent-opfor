@@ -7,7 +7,7 @@ import {
   buildEvaluatorIndex,
   type DiscoveredEvaluator,
 } from "../catalog/discoverEvaluators.js";
-import { EvaluatorFrontmatterSchema } from "./schema.js";
+import { EvaluatorFrontmatterSchema, SourceAnalysisFrontmatterSchema } from "./schema.js";
 import type { StandardsMap } from "./schema.js";
 import type { EvaluatorStrategy } from "./strategies.js";
 import { resolveStandardsFromFrontmatter } from "./standards.js";
@@ -56,6 +56,14 @@ export function clearEvaluatorIndexCache(): void {
 export async function parseEvaluator(yamlPath: string): Promise<EvaluatorSpec> {
   const raw = await readFile(yamlPath, "utf8");
   const doc = parseYaml(raw) as Record<string, unknown>;
+
+  // Files under a `source-analysis/` folder are white-box SAST evaluators driven
+  // by skills, not the dynamic attack engine. They have a different (strict) shape,
+  // so route them to their own validator instead of the dynamic schema. See
+  // evaluators/<surface>/source-analysis/README.md.
+  if (yamlPath.split(path.sep).includes("source-analysis")) {
+    return parseSourceAnalysisEvaluator(yamlPath, doc);
+  }
 
   const parsed = EvaluatorFrontmatterSchema.safeParse(doc);
   if (!parsed.success) {
@@ -130,6 +138,43 @@ export async function parseEvaluator(yamlPath: string): Promise<EvaluatorSpec> {
   // Parse depends_on
   const dependsOn = parseDependsOn(doc);
   if (dependsOn.length > 0) spec.dependsOn = dependsOn;
+
+  return spec;
+}
+
+/**
+ * Parse a `source-analysis/` (SAST) evaluator against its dedicated strict schema.
+ *
+ * These are skill-only, static checks: no attack patterns and no runtime surface,
+ * so the dynamic "patterns required" rule does not apply. Returned as an
+ * EvaluatorSpec so discovery/catalog code treats them uniformly — but with an
+ * empty pattern list a CLI run produces no attacks (irrelevant, but never crashes).
+ */
+function parseSourceAnalysisEvaluator(
+  yamlPath: string,
+  doc: Record<string, unknown>
+): EvaluatorSpec {
+  const parsed = SourceAnalysisFrontmatterSchema.safeParse(doc);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("; ");
+    throw new Error(`Source-analysis evaluator ${yamlPath}: validation failed: ${issues}`);
+  }
+  const fm = parsed.data;
+
+  const spec: EvaluatorSpec = {
+    id: fm.id.trim(),
+    name: fm.name.trim(),
+    severity: fm.severity,
+    description: fm.description?.trim() ?? "",
+    passCriteria: fm.pass_criteria.trim(),
+    failCriteria: fm.fail_criteria.trim(),
+    patterns: [], // static evaluators carry no attack patterns
+  };
+
+  const standards = resolveStandardsFromFrontmatter(doc);
+  if (standards && Object.keys(standards).length > 0) spec.standards = standards;
 
   return spec;
 }

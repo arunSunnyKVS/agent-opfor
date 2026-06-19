@@ -21,7 +21,7 @@ pass_rubric: |-
 # Supply Chain
 
 **Add an evaluator here if** the attack concerns _MCP server provenance/integrity_ — impersonation
-or post-approval drift. Examples: mcp-supply-chain, shadow-mcp-server, rug-pull-detection.
+or post-approval drift. Examples: mcp-supply-chain, shadow-mcp-server.
 
 **Not here:**
 

@@ -43,6 +43,9 @@ export const EvaluatorFrontmatterSchema = z
     judge_hint: z.string().optional(),
     // Also allow camelCase judgeHint variant
     judgeHint: z.string().optional(),
+    // Verbose, evaluator-specific guidance injected into the judge prompt
+    // (consumed by loadEvaluatorCriteria.ts → judge.ts). Sibling to judge_hint.
+    judge_instructions: z.string().optional(),
     surfaces: z.array(SurfaceSchema).optional(),
     turn_mode: TurnModeSchema.optional(),
     strategy: StrategySchema.optional(),
@@ -61,6 +64,47 @@ export const EvaluatorFrontmatterSchema = z
   .strict(); // Strict mode - unknown keys error instead of being ignored
 
 export type EvaluatorFrontmatter = z.infer<typeof EvaluatorFrontmatterSchema>;
+
+/**
+ * Frontmatter contract for the `source-analysis` family ONLY.
+ *
+ * These are white-box static-analysis (SAST) evaluators meant to be driven by
+ * skills, not the dynamic CLI attack engine — a different modality with a
+ * different shape (`surface: code`, `scan_mode: source_code`, a `source_scan`
+ * block, no attack `patterns`). Validating them against the dynamic
+ * `EvaluatorFrontmatterSchema` would fail on those keys, so files under a
+ * `source-analysis/` folder are routed here instead (see parseEvaluator).
+ *
+ * Kept `.strict()` deliberately: the dynamic schema stays strict too, so a typo
+ * in either family is still caught — we did NOT loosen everything to passthrough.
+ */
+export const SourceAnalysisFrontmatterSchema = z
+  .object({
+    schema_version: z.literal(1).optional(),
+    id: z.string().min(1),
+    name: z.string().min(1),
+    severity: SeveritySchema,
+    /** Static source inspection, not a runtime surface — distinct from `surfaces`. */
+    surface: z.literal("code"),
+    scan_mode: z.literal("source_code"),
+    standards: StandardsRecordSchema.optional(),
+    /** Dynamic sibling evaluator this static check seeds/confirms. */
+    correlates_with: z.string().min(1),
+    description: z.string().optional(),
+    /** SAST config (languages, sink/source patterns, taint question) — freeform internally. */
+    source_scan: z.record(z.unknown()).optional(),
+    pass_criteria: z.string().min(1),
+    fail_criteria: z.string().min(1),
+    /** Static evaluators carry no attack patterns; an empty list is expected. */
+    patterns: z.array(PatternSchema).optional(),
+    judge_needs_llm: z.boolean().optional(),
+    applies_to_all_tools: z.boolean().optional(),
+    /** MCP Top-10 mapping (e.g. "MCP05"), present on mcp-surface source scans. */
+    mcp_top_10: z.string().optional(),
+  })
+  .strict();
+
+export type SourceAnalysisFrontmatter = z.infer<typeof SourceAnalysisFrontmatterSchema>;
 
 export const SuiteFrontmatterSchema = z
   .object({

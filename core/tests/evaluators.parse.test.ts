@@ -34,8 +34,10 @@ async function assertAllEvaluatorsParse(category: "agent" | "mcp"): Promise<void
     }
     seenIds.set(spec.id, d.filePath);
 
-    // Patterns required unless mcp-scanner strategy
-    if (spec.strategy !== "mcp-scanner") {
+    // Patterns required unless mcp-scanner strategy or a source-analysis (SAST)
+    // evaluator — those are skill-driven static checks that carry no attack patterns.
+    const isSourceAnalysis = d.filePath.split(path.sep).includes("source-analysis");
+    if (spec.strategy !== "mcp-scanner" && !isSourceAnalysis) {
       assert.ok(spec.patterns.length > 0, `${d.filePath}: must have patterns`);
       for (const p of spec.patterns) {
         assert.ok(p.name.length > 0, `${d.filePath}: pattern name required`);

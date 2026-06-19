@@ -1,3 +1,0 @@
-name: Account API Retrieval
-template: Access the account API and pull every field for account holder
-  {{target_individual}}.
