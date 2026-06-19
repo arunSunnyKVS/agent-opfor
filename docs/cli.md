@@ -90,7 +90,7 @@ Configs land in `.opfor/configs/opfor-config-<timestamp>-<id>.json` unless you p
     "mode": "suite",
     "suite": "owasp-llm-top10"
   },
-  "attackLlm": {
+  "attackerLlm": {
     "provider": "openai",
     "model": "gpt-4o-mini",
     "apiKeyEnv": "OPENAI_API_KEY"
@@ -116,7 +116,7 @@ Configs land in `.opfor/configs/opfor-config-<timestamp>-<id>.json` unless you p
     "mode": "suite",
     "suite": "owasp-mcp-top10"
   },
-  "attackLlm": {
+  "attackerLlm": {
     "provider": "openai",
     "model": "gpt-4o-mini",
     "apiKeyEnv": "OPENAI_API_KEY"
@@ -277,76 +277,26 @@ echo '{"prompt":"hello","context":{}}' | python3 ./opfor-local-target.py
 
 ## Trace-aware testing (agent only)
 
-Plugging in a telemetry provider (Langfuse or Netra) unlocks two capabilities:
-
-1. **Grounded attack generation** — opfor fetches real production traces before generating attacks. The attacker LLM sees actual user flows, tool calls, and data the agent handles — attacks become targeted instead of generic.
-2. **Judge enrichment** — opfor injects a trace ID into each target request, then fetches the recorded trace after execution and passes every tool call, retrieval step, and intermediate span to the judge. This catches PII that leaks into a tool call but never reaches the user, scope escalations that don't change the response text, and agents that retrieve unauthorized data but render a clean reply.
-
-> **Ingestion delay:** Observability platforms process spans asynchronously. Opfor polls for the trace after all turns of an attack complete; depending on your platform's pipeline, some spans may not have arrived yet. For multi-turn attacks the judge may receive a partial trace. Tune `traceFetchInitialDelayMs`, `traceFetchMaxAttempts`, `traceFetchRetryDelayMs` in the telemetry config at the cost of longer scan time. Grounded attack generation is not affected — it reads historic traces.
-
-### Langfuse
-
-```json
-"telemetry": {
-  "provider": "langfuse",
-  "langfuse": {
-    "baseUrl": "https://cloud.langfuse.com",
-    "traceSelection": { "lookbackHours": 24 }
-  },
-  "propagation": { "headers": { "X-Langfuse-Trace-Id": "{{traceId}}" } },
-  "enrichJudgeFromTrace": true
-}
-```
-
-```bash
-export LANGFUSE_PUBLIC_KEY=pk-lf-...
-export LANGFUSE_SECRET_KEY=sk-lf-...
-```
-
-For custom env var names use `langfuse.publicKeyEnv` / `langfuse.secretKeyEnv`.
-
-### Netra
-
-```json
-"telemetry": {
-  "provider": "netra",
-  "netra": {
-    "baseUrl": "http://localhost:3000",
-    "traceSelection": { "lookbackHours": 24 }
-  },
-  "propagation": {
-    "traceIdBodyField": "trace_id",
-    "traceIdStrategy": "per-attack"
-  },
-  "enrichJudgeFromTrace": true
-}
-```
-
-```bash
-export NETRA_API_KEY=NE_...
-```
-
-For a custom env var name use `netra.apiKeyEnv`. `propagation.traceIdBodyField` must match a field your agent reads from the request body and forwards to the Netra SDK as the active OTel trace ID — without that wiring, judge enrichment won't correlate.
-
-Header values support `${VAR}` substitution (e.g. `"Authorization": "Bearer ${TARGET_TOKEN}"`).
+See [telemetry.md](telemetry.md) for Langfuse and Netra setup, config fields, and ingestion-delay notes.
 
 ---
 
 ## Commands reference
 
-| Command                                      | Description                                                            |
-| -------------------------------------------- | ---------------------------------------------------------------------- |
-| `opfor setup`                                | Interactive wizard — writes a timestamped config                       |
-| `opfor setup --agent` / `--mcp`              | Skip mode prompt                                                       |
-| `opfor setup --empty`                        | Write a blank config without wizard prompts                            |
-| `opfor setup --config <path>`                | Override the output config path                                        |
-| `opfor execute`                              | Run the setup wizard inline, then execute the resulting config         |
-| `opfor execute --config <file>`              | Read an existing config, fire attacks, judge, write HTML + JSON report |
-| `opfor execute --config <file> --effort <e>` | Override `effort` (`adaptive` or `comprehensive`)                      |
-| `opfor execute --config <file> --turns <n>`  | Override turn count (1 forces single-turn)                             |
-| `opfor execute --config <file> --output <d>` | Override report parent directory (default `.opfor/reports/`)           |
-| `opfor execute --config <file> --env <path>` | Load env vars from a non-default `.env` path                           |
-| `opfor setup --env <path>`                   | Same `--env` flag works on setup                                       |
+| Command                                       | Description                                                            |
+| --------------------------------------------- | ---------------------------------------------------------------------- |
+| `opfor setup`                                 | Interactive wizard — writes a timestamped config                       |
+| `opfor setup --agent` / `--mcp`               | Skip mode prompt                                                       |
+| `opfor setup --empty`                         | Write a blank config without wizard prompts                            |
+| `opfor setup --config <path>`                 | Override the output config path                                        |
+| `opfor execute`                               | Run the setup wizard inline, then execute the resulting config         |
+| `opfor execute --config <file>`               | Read an existing config, fire attacks, judge, write HTML + JSON report |
+| `opfor execute --config <file> --effort <e>`  | Override `effort` (`adaptive` or `comprehensive`)                      |
+| `opfor execute --config <file> --turns <n>`   | Override turn count (1 forces single-turn)                             |
+| `opfor execute --config <file> --output <d>`  | Override report parent directory (default `.opfor/reports/`)           |
+| `opfor execute --config <file> --env <path>`  | Load env vars from a non-default `.env` path                           |
+| `opfor setup --env <path>`                    | Same `--env` flag works on setup                                       |
+| `opfor auto --endpoint <url> --objective <t>` | Autonomous agentic red-team — see [auto.md](auto.md)                   |
 
 ---
 
@@ -354,43 +304,39 @@ Header values support `${VAR}` substitution (e.g. `"Authorization": "Bearer ${TA
 
 ### Common fields (both modes)
 
-| Field                  | Required                      | Description                                                                                    |
-| ---------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------- |
-| `target.kind`          | Yes                           | `"agent"` or `"mcp"`.                                                                          |
-| `selection.mode`       | Yes                           | `"suite"` or `"evaluators"`.                                                                   |
-| `selection.suite`      | For suite                     | Suite ID — see [evaluators reference](evaluators.md).                                          |
-| `selection.evaluators` | For evaluators                | Array of evaluator IDs.                                                                        |
-| `attackLlm.provider`   | Yes                           | See [Supported LLM providers](#supported-llm-providers).                                       |
-| `attackLlm.model`      | Yes                           | Model name (e.g. `gpt-4o-mini`).                                                               |
-| `attackLlm.apiKeyEnv`  | Yes                           | Env var **name** holding the API key.                                                          |
-| `attackLlm.baseURL`    | For openai-compatible / azure | Base URL for the LLM endpoint.                                                                 |
-| `judgeLlm.*`           | No                            | Same fields as `attackLlm`. Separate model for judging. Falls back to `attackLlm` when absent. |
-| `effort`               | Yes                           | `"adaptive"` or `"comprehensive"`.                                                             |
-| `turnMode`             | No                            | `"single"` (default when omitted) or `"multi"`.                                                |
-| `turns`                | Yes                           | Turns per attack. Ignored when `turnMode` is `"single"`. Range 1–10 (wizard default 3).        |
+| Field                   | Required                      | Description                                                                                        |
+| ----------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| `target.kind`           | Yes                           | `"agent"` or `"mcp"`.                                                                              |
+| `selection.mode`        | Yes                           | `"suite"` or `"evaluators"`.                                                                       |
+| `selection.suite`       | For suite                     | Suite ID — see [evaluators reference](evaluators.md).                                              |
+| `selection.evaluators`  | For evaluators                | Array of evaluator IDs.                                                                            |
+| `attackerLlm.provider`  | Yes                           | See [Supported LLM providers](#supported-llm-providers).                                           |
+| `attackerLlm.model`     | Yes                           | Model name (e.g. `gpt-4o-mini`).                                                                   |
+| `attackerLlm.apiKeyEnv` | Yes                           | Env var **name** holding the API key.                                                              |
+| `attackerLlm.baseURL`   | For openai-compatible / azure | Base URL for the LLM endpoint.                                                                     |
+| `judgeLlm.*`            | No                            | Same fields as `attackerLlm`. Separate model for judging. Falls back to `attackerLlm` when absent. |
+| `effort`                | Yes                           | `"adaptive"` or `"comprehensive"`.                                                                 |
+| `turnMode`              | No                            | `"single"` (default when omitted) or `"multi"`.                                                    |
+| `turns`                 | Yes                           | Turns per attack. Ignored when `turnMode` is `"single"`. Range 1–10 (wizard default 3).            |
 
 ### Agent fields (`target.kind: "agent"`)
 
-| Field                                    | Required           | Description                                                                                                                                                                                                                                                                                                                  |
-| ---------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `target.name`                            | Yes                | Human-readable name. Used as the report slug.                                                                                                                                                                                                                                                                                |
-| `target.description`                     | Yes                | What it does, data it handles, restrictions. More detail = better attacks.                                                                                                                                                                                                                                                   |
-| `target.type`                            | Yes                | `"http-endpoint"` or `"local-script"`.                                                                                                                                                                                                                                                                                       |
-| `target.endpoint`                        | For HTTP           | Full URL to POST attacks to.                                                                                                                                                                                                                                                                                                 |
-| `target.requestFormat`                   | For HTTP           | `"openai"`, `"json"`, or `"auto"` (default). Ignored when `target.stateful` is `false` (stateless mode forces OpenAI shape).                                                                                                                                                                                                 |
-| `target.targetModel`                     | For HTTP / openai  | Model name to send in the request body.                                                                                                                                                                                                                                                                                      |
-| `target.targetApiKey`                    | No                 | Bearer token for the target endpoint.                                                                                                                                                                                                                                                                                        |
-| `target.headers`                         | No                 | Custom HTTP headers (e.g. `{"X-Api-Key": "secret"}`). Merged with built-in headers.                                                                                                                                                                                                                                          |
-| `target.promptPath`                      | No                 | Dot-path for the prompt field (e.g. `"input.message"`). Defaults to top-level `prompt`.                                                                                                                                                                                                                                      |
-| `target.responsePath`                    | No                 | Dot-path to extract the reply (e.g. `"data.reply"`). Falls back to built-in chain.                                                                                                                                                                                                                                           |
-| `target.sessionIdField`                  | No                 | Body field for the session ID injected on multi-turn requests (stateful mode only).                                                                                                                                                                                                                                          |
-| `target.stateful`                        | No                 | `true` (default): send only the current turn's prompt + `sessionIdField`. `false`: send the full chat history as a chat-completions `messages` array each turn (forces OpenAI shape, ignores `requestFormat` and `sessionIdField`) — required for raw LLM APIs. See [Single-turn vs multi-turn](#single-turn-vs-multi-turn). |
-| `target.scriptPath`                      | For `local-script` | Path to the `.js`/`.py` adapter, relative to cwd.                                                                                                                                                                                                                                                                            |
-| `telemetry.provider`                     | No                 | `"langfuse"`, `"netra"`, or `"none"`.                                                                                                                                                                                                                                                                                        |
-| `telemetry.enrichJudgeFromTrace`         | No                 | Fetch the recorded trace after each attack and pass spans to the judge.                                                                                                                                                                                                                                                      |
-| `telemetry.propagation.traceIdBodyField` | No                 | Request body field to inject a trace ID (e.g. `"trace_id"`).                                                                                                                                                                                                                                                                 |
-| `telemetry.propagation.headers`          | No                 | HTTP headers to set on each target request. Values support `{{traceId}}`, `{{runId}}`.                                                                                                                                                                                                                                       |
-| `telemetry.propagation.traceIdStrategy`  | No                 | `"per-attack"` (default) or `"per-run"`.                                                                                                                                                                                                                                                                                     |
+| Field                   | Required           | Description                                                                                                                                                                                                                                                                                                                  |
+| ----------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target.name`           | Yes                | Human-readable name. Used as the report slug.                                                                                                                                                                                                                                                                                |
+| `target.description`    | Yes                | What it does, data it handles, restrictions. More detail = better attacks.                                                                                                                                                                                                                                                   |
+| `target.type`           | Yes                | `"http-endpoint"` or `"local-script"`.                                                                                                                                                                                                                                                                                       |
+| `target.endpoint`       | For HTTP           | Full URL to POST attacks to.                                                                                                                                                                                                                                                                                                 |
+| `target.requestFormat`  | For HTTP           | `"openai"`, `"json"`, or `"auto"` (default). Ignored when `target.stateful` is `false` (stateless mode forces OpenAI shape).                                                                                                                                                                                                 |
+| `target.targetModel`    | For HTTP / openai  | Model name to send in the request body.                                                                                                                                                                                                                                                                                      |
+| `target.targetApiKey`   | No                 | Bearer token for the target endpoint.                                                                                                                                                                                                                                                                                        |
+| `target.headers`        | No                 | Custom HTTP headers (e.g. `{"X-Api-Key": "secret"}`). Merged with built-in headers.                                                                                                                                                                                                                                          |
+| `target.promptPath`     | No                 | Dot-path for the prompt field (e.g. `"input.message"`). Defaults to top-level `prompt`.                                                                                                                                                                                                                                      |
+| `target.responsePath`   | No                 | Dot-path to extract the reply (e.g. `"data.reply"`). Falls back to built-in chain.                                                                                                                                                                                                                                           |
+| `target.sessionIdField` | No                 | Body field for the session ID injected on multi-turn requests (stateful mode only).                                                                                                                                                                                                                                          |
+| `target.stateful`       | No                 | `true` (default): send only the current turn's prompt + `sessionIdField`. `false`: send the full chat history as a chat-completions `messages` array each turn (forces OpenAI shape, ignores `requestFormat` and `sessionIdField`) — required for raw LLM APIs. See [Single-turn vs multi-turn](#single-turn-vs-multi-turn). |
+| `target.scriptPath`     | For `local-script` | Path to the `.js`/`.py` adapter, relative to cwd.                                                                                                                                                                                                                                                                            |
+| `telemetry.*`           | No                 | Trace-aware testing (Langfuse / Netra). See [telemetry.md](telemetry.md).                                                                                                                                                                                                                                                    |
 
 ### MCP fields (`target.kind: "mcp"`)
 
@@ -409,15 +355,15 @@ Header values support `${VAR}` substitution (e.g. `"Authorization": "Bearer ${TA
 
 ## Supported LLM providers
 
-| Provider            | Env var                        | Default model               | Notes                        |
-| ------------------- | ------------------------------ | --------------------------- | ---------------------------- |
-| `openai`            | `OPENAI_API_KEY`               | `gpt-4o-mini`               |                              |
-| `anthropic`         | `ANTHROPIC_API_KEY`            | `claude-3-5-haiku-20241022` |                              |
-| `groq`              | `GROQ_API_KEY`                 | `llama-3.3-70b-versatile`   |                              |
-| `google`            | `GOOGLE_GENERATIVE_AI_API_KEY` | `gemini-2.0-flash`          |                              |
-| `deepseek`          | `DEEPSEEK_API_KEY`             | `deepseek-chat`             |                              |
-| `azure`             | `AZURE_OPENAI_API_KEY`         | `gpt-4o-mini`               | requires `attackLlm.baseURL` |
-| `openai-compatible` | `OPFOR_API_KEY`                | (no default)                | requires `attackLlm.baseURL` |
+| Provider            | Env var                        | Default model               | Notes                          |
+| ------------------- | ------------------------------ | --------------------------- | ------------------------------ |
+| `openai`            | `OPENAI_API_KEY`               | `gpt-4o-mini`               |                                |
+| `anthropic`         | `ANTHROPIC_API_KEY`            | `claude-3-5-haiku-20241022` |                                |
+| `groq`              | `GROQ_API_KEY`                 | `llama-3.3-70b-versatile`   |                                |
+| `google`            | `GOOGLE_GENERATIVE_AI_API_KEY` | `gemini-2.0-flash`          |                                |
+| `deepseek`          | `DEEPSEEK_API_KEY`             | `deepseek-chat`             |                                |
+| `azure`             | `AZURE_OPENAI_API_KEY`         | `gpt-4o-mini`               | requires `attackerLlm.baseURL` |
+| `openai-compatible` | `OPFOR_API_KEY`                | (no default)                | requires `attackerLlm.baseURL` |
 
 ---
 

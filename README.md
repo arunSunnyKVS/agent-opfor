@@ -45,7 +45,7 @@ opfor execute
 Opfor walks you through picking a target, generating attacks, running them, and producing an HTML report. Set an API key for your LLM provider first:
 
 ```bash
-export GROQ_API_KEY=your-key    # or OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
+export OPENAI_API_KEY=your-key    # or GEMINI_API_KEY, ANTHROPIC_API_KEY, etc.
 ```
 
 → [Examples](examples/) · [Browser extension](docs/browser-extension.md)
@@ -80,12 +80,12 @@ We built opfor because we needed all three.
 
 Different people on your team need different entry points. Opfor ships four.
 
-| Mode                     | How                                                                  | Best for                                                                                  |
-| ------------------------ | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **🖥️ CLI**               | `opfor setup` → `opfor execute`                                      | Engineers, CI/CD, terminal-first workflows                                                |
-| **🌐 Browser extension** | Install the extension, click the icon on any chat interface          | Product managers, designers, QA, security analysts — anyone who can't or won't write code |
-| **🤖 MCP server**        | Register opfor in Cursor or Claude Desktop, then ask in chat         | AI coding agents that test your other agents                                              |
-| **⚡ Skills**            | `/opfor-setup` and `/opfor-execute` in Cursor, Claude Code, Windsurf | Developers who want one-command testing inside their IDE                                  |
+| Mode                     | How                                                                           | Best for                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **🖥️ CLI**               | `opfor setup` → `opfor execute`                                               | Engineers, CI/CD, terminal-first workflows                                                |
+| **🌐 Browser extension** | Install the extension, click the icon on any chat interface                   | Product managers, designers, QA, security analysts — anyone who can't or won't write code |
+| **🤖 MCP server**        | Register opfor in Cursor or Claude Desktop, then ask in chat                  | AI coding agents that test your other agents                                              |
+| **⚡ Skills**            | `/opfor-setup` · `/opfor-execute` · `/opfor-mcp-setup` · `/opfor-mcp-execute` | Developers who want one-command testing inside their IDE                                  |
 
 All four share the same evaluators, attack templates, and judge logic.
 
@@ -127,14 +127,14 @@ This is the path for the half of every product team that doesn't open a terminal
 
 Opfor ships with curated suites that map to industry standards. Pick a suite or run individual evaluators.
 
-| Suite ID              | Standard                  | Focus                                                                     |
-| --------------------- | ------------------------- | ------------------------------------------------------------------------- |
-| `owasp-llm-top10`     | OWASP LLM Top 10 (2025)   | Prompt injection, jailbreaks, sensitive disclosure, system prompt leakage |
-| `owasp-agentic-ai`    | OWASP Agentic AI Top 10   | Excessive agency, tool misuse, agent goal hijack, memory poisoning        |
-| `owasp-mcp-top10`     | OWASP MCP Top 10 (2025)   | Secret exposure, scope escalation, tool description injection, SSRF       |
-| `owasp-api`           | OWASP API Security Top 10 | BOLA, BFLA, SQL injection                                                 |
-| `eu-ai-act-bias`      | EU AI Act — Bias          | Age, gender, race, disability                                             |
-| `output-trust-safety` | Output trust & safety     | Hallucination, misinformation, improper output handling                   |
+| Suite ID                  | Standard                  | Focus                                                                     |
+| ------------------------- | ------------------------- | ------------------------------------------------------------------------- |
+| `owasp-llm-top10`         | OWASP LLM Top 10 (2025)   | Prompt injection, jailbreaks, sensitive disclosure, system prompt leakage |
+| `owasp-agentic-ai`        | OWASP Agentic AI Top 10   | Excessive agency, tool misuse, agent goal hijack, memory poisoning        |
+| `owasp-mcp-top10`         | OWASP MCP Top 10 (2025)   | Secret exposure, scope escalation, tool description injection, SSRF       |
+| `owasp-api`               | OWASP API Security Top 10 | BOLA, BFLA, SQL injection                                                 |
+| `eu-ai-act-bias`          | EU AI Act — Bias          | Age, gender, race, disability                                             |
+| `output-trust-and-safety` | Output trust & safety     | Hallucination, misinformation, improper output handling                   |
 
 → [Full evaluator reference and OWASP mapping](docs/evaluators.md)
 
@@ -153,7 +153,7 @@ Plug opfor into your observability stack and the LLM judge sees not just the fin
 
 This catches what input/output testing misses — PII that leaks into a tool call but never reaches the user, scope escalations in MCP that don't change the response text, agents that retrieve unauthorized data but render a clean reply.
 
-→ [Trace-aware testing guide](docs/cli.md#trace-aware-testing-agent-only)
+→ [Trace-aware testing guide](docs/telemetry.md)
 
 ---
 
@@ -186,7 +186,7 @@ This catches what input/output testing misses — PII that leaks into a tool cal
 
 Highest-impact ways to contribute:
 
-1. **New evaluators** — add a `.md` file under `evaluators/agent/` or `evaluators/mcp/`, run `npm run sync:skills-evaluators`, and commit both root and `_generated` copies. The engine reads repo root. No TypeScript needed.
+1. **New evaluators** — add a `.yaml` file under `evaluators/agent/` or `evaluators/mcp/`, run `npm run build:catalog`, and commit. No TypeScript needed.
 2. **New target adapters** — extend `core/src/mcp-client/` to support new agent frameworks.
 3. **Findings** — run opfor against a public agent or MCP server and PR your writeup to `findings/`.
 4. **Bug reports** — open an [issue](https://github.com/KeyValueSoftwareSystems/opfor/issues).
@@ -243,7 +243,7 @@ _OPFOR is short for Opposition Force — a military term for the dedicated unit 
 
 <p align="center">
   <a href="https://getnetra.ai/"><strong>Netra</strong></a> — AI observability, tracing, and simulation.<br/>
-  <a href="docs/cli.md#trace-aware-testing-agent-only">Integrates with opfor for trace-aware testing.</a>
+  <a href="docs/telemetry.md">Integrates with opfor for trace-aware testing.</a>
 </p>
 
 <br/>

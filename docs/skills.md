@@ -1,8 +1,6 @@
 # Opfor — Skills
 
-Opfor ships two Skills (markdown instruction files an AI coding agent reads and follows). Install once, then trigger from chat inside your project.
-
-> Skills currently cover **agent / chatbot red-teaming only**. For MCP server red-teaming use the [CLI](cli.md) or [MCP server tool](mcp.md).
+Opfor ships Skills (markdown instruction files an AI coding agent reads and follows) for both agent and MCP server red-teaming. Install once, then trigger from chat inside your project.
 
 ---
 
@@ -20,10 +18,14 @@ The CLI walks you through a short wizard: pick which agent to install into (Clau
 
 ## What you get
 
-| Skill               | What the agent does when you invoke it                                                                                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`opfor-setup`**   | Scans the repo (endpoints, `opfor.config*`, `.env`, telemetry SDK imports), asks only what's still unknown, picks a suite or evaluators, generates attack prompts, writes a config folder under `.opfor/configs/<uuid>/`. |
-| **`opfor-execute`** | Loads the config folder, fires the pre-generated attack prompts at the target, runs the LLM-as-judge, writes an HTML + JSON report, and summarises findings in chat.                                                      |
+Two skill bundles, each with setup + execute:
+
+| Skill               | What the agent does                                                                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opfor-setup`       | Scans the repo (endpoints, `opfor.config*`, `.env`, telemetry SDK imports), asks only what's still unknown, picks a suite or evaluators, writes a config under `.opfor/configs/`. |
+| `opfor-execute`     | Loads the config, fires attack prompts at the target, runs the LLM-as-judge, writes an HTML + JSON report, and summarises findings in chat.                                       |
+| `opfor-mcp-setup`   | Scans the repo (mcp.json, docker configs, server source), collects transport + command/URL, picks a suite, writes an MCP config under `.opfor/configs/`.                          |
+| `opfor-mcp-execute` | Fires tool-call attacks at the MCP server, judges JSON-RPC responses, writes report.                                                                                              |
 
 Flow: `opfor-setup` → `opfor-execute`. Run setup once per target; re-run execute whenever you want a fresh report.
 
@@ -47,16 +49,16 @@ Flow: `opfor-setup` → `opfor-execute`. Run setup once per target; re-run execu
 Inside your IDE chat, just say:
 
 ```
-Set up an Opfor assessment for this project.
+Set up an Opfor assessment for this project.     # triggers opfor-setup
+Run the Opfor assessment.                        # triggers opfor-execute
 ```
 
-The agent reads `opfor-setup/SKILL.md` and walks the wizard. When done, say:
+For MCP server targets:
 
 ```
-Run the Opfor assessment.
+Set up an Opfor MCP assessment for this server.  # triggers opfor-mcp-setup
+Run the Opfor MCP assessment.                    # triggers opfor-mcp-execute
 ```
-
-The agent reads `opfor-execute/SKILL.md` and runs the scan.
 
 ---
 

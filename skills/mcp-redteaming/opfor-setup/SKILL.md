@@ -1,11 +1,6 @@
 ---
 name: opfor-mcp-setup
-description: >
-  Configure an MCP server target for an Opfor security assessment. Use when the user wants
-  to set up MCP red-teaming, configure an MCP server to test, or create an opfor MCP config.
-  Scan the repo first (mcp.json, docker-compose, server code) when the skill lives inside
-  the user's project; only ask for missing pieces. Trigger when they say "configure",
-  "set up MCP", "test my MCP server", or start an Opfor MCP assessment for the first time.
+description: Set up an MCP server target for Opfor red-teaming.
 ---
 
 # Opfor — MCP Server Target Configuration

@@ -1,10 +1,6 @@
 ---
 name: opfor-mcp-execute
-description: >
-  Execute an Opfor MCP security assessment against a configured MCP server target. Use when the
-  user wants to run, start, or execute an MCP red-team assessment.
-  Trigger when they say "run opfor mcp", "test my MCP server", "start MCP assessment",
-  or reference an existing opfor MCP config.
+description: Run red-team attacks and generate a report for an MCP server target.
 ---
 
 # Opfor — MCP Assessment Execution

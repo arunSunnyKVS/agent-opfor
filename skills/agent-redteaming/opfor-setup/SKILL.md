@@ -1,12 +1,6 @@
 ---
 name: opfor-setup
-description: >
-  Configure a target for an Opfor security assessment. Use when the user wants to
-  set up a new target, configure what to test, or create an opfor.config file.
-  Scan the repo first (including telemetry env and config) when the skill lives
-  inside the user's project; only ask for missing pieces. Optionally use traces
-  so attack prompts mirror real usage. Trigger when they say "configure", "set up",
-  "create config", or start an Opfor assessment for the first time without a config.
+description: Set up an agent or chatbot target for Opfor red-teaming.
 ---
 
 # Opfor — target configuration

@@ -1,10 +1,6 @@
 ---
 name: opfor-execute
-description: >
-  Execute an Opfor security assessment against a configured AI target. Use when the
-  user wants to run, start, execute, or resume an Opfor assessment.
-  Trigger when they say "run opfor", "start assessment", "test my AI",
-  or reference an existing opfor config.
+description: Run red-team attacks and generate a report for an agent target.
 ---
 
 # Opfor — assessment execution

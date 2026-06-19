@@ -1,4 +1,4 @@
-# AGENT.md — Opfor
+# AGENTS.md — Opfor
 
 This file is for AI coding agents (Claude Code, Copilot, Cursor, etc.) working in this repository. It describes the project structure, build system, key conventions, and how the core subsystems fit together.
 
