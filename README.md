@@ -38,17 +38,21 @@ Apache 2.0. Built from India.
 
 ```bash
 npm install -g opfor
-opfor setup
-opfor run
-```
-
-Opfor walks you through picking a target, generating attacks, running them, and producing an HTML report. Set an API key for your LLM provider first:
-
-```bash
 export OPENAI_API_KEY=your-key    # or GEMINI_API_KEY, ANTHROPIC_API_KEY, etc.
 ```
 
-→ [Browser extension](docs/browser-extension.md)
+**One-shot** — runs the setup wizard and immediately starts the scan:
+
+```bash
+opfor run
+```
+
+**Two-step** — save a config you can reuse or commit to CI:
+
+```bash
+opfor setup                               # wizard saves a config to .opfor/configs/
+opfor run --config .opfor/configs/<file>  # run any time against the saved config
+```
 
 ---
 
@@ -179,7 +183,7 @@ Opfor ships with curated suites that map to industry standards. Pick a suite or 
 
 ## Trace-aware testing
 
-Plug opfor into your observability stack and the LLM judge sees not just the final response — but every tool call, retrieval, and intermediate reasoning step. Out of the box, opfor integrates with **[Langfuse](https://langfuse.com)** and **[Netra](https://netra.io)** (Netra is our paid hosted product — same team).
+Plug opfor into your observability stack and the LLM judge sees not just the final response — but every tool call, retrieval, and intermediate reasoning step. Out of the box, opfor integrates with **[Langfuse](https://langfuse.com)** and **[Netra](https://getnetra.ai)** (Netra is our paid hosted product — same team).
 
 ```json
 "telemetry": {
