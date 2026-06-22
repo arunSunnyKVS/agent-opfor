@@ -187,7 +187,7 @@ opfor run
 Each run lands in its own subfolder:
 
 ```
-.opfor/reports/opfor-report-<compactTs>-<slug>-<shortId>/
+.opfor/reports/run-report-<compactTs>-<slug>-<shortId>/
 ├── <slug>-report.html
 └── <slug>-report.json
 ```

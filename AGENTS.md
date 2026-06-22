@@ -251,7 +251,7 @@ There is no longer a separate `generate` step. `opfor run --config <file>` does 
 5. **Per evaluator:** `generateAttacks({ evaluator, target, effort, model, turns, turnMode })` produces `AttackSpec[]`. `adaptive` yields one open-ended spec; `comprehensive` yields one spec per named pattern.
 6. **Per attack:** `runAgentAttack` (or `runMcpAttack` in `runAll.ts`) drives the turn loop. Each turn: build the prompt (turn 1 uses the seed; later turns use `generateNextTurn` with full history + last judge signal), send via the target, record the response. Stops early if the judge returns FAIL on a partial-judge check.
 7. **Judge once after the loop.** A single judge call sees the whole transcript + optional fetched trace data (`enrichJudgeFromTrace`) and returns `{ verdict, score, confidence, evidence, reasoning }`.
-8. **Aggregate + write report.** `writeReport(report, outputDir)` creates `.opfor/reports/opfor-report-<compactTs>-<slug>-<shortId>/` containing `<slug>-report.html` and `<slug>-report.json`.
+8. **Aggregate + write report.** `writeReport(report, outputDir)` creates `.opfor/reports/run-report-<compactTs>-<slug>-<shortId>/` containing `<slug>-report.html` and `<slug>-report.json`. (Autonomous `opfor hunt` uses the parallel `writeAutonomousReport`, which writes the same `<slug>-report.html`/`.json` into a `hunt-report-<compactTs>-<slug>-<shortId>/` subfolder.)
 
 `runAllBrowser` is the same loop in browser-safe form: takes preloaded `EvaluatorSpec[]` + a pre-built `AgentTarget` (e.g. `DomTarget`), skips disk reads.
 

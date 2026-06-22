@@ -112,7 +112,7 @@ When you run a scan, opfor:
 4. **Evaluates with a judge** — an LLM judge classifies each response with pass/fail + reasoning
 5. **Generates a report** — HTML for browsing, JSON for CI/CD, all artifacts logged for reproducibility
 
-Each run lands in its own subfolder under `.opfor/reports/opfor-report-<compactTs>-<slug>-<shortId>/` containing `<slug>-report.html` + `<slug>-report.json`.
+Each run lands in its own subfolder under `.opfor/reports/run-report-<compactTs>-<slug>-<shortId>/` containing `<slug>-report.html` + `<slug>-report.json`. Autonomous `opfor hunt` runs use the same layout under `hunt-report-<compactTs>-<slug>-<shortId>/`.
 
 ---
 
