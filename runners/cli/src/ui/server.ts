@@ -60,7 +60,6 @@ function resolveStaticDir(): string {
   const candidates = [
     path.join(__dirname, "..", "ui-static"),
     path.join(__dirname, "..", "..", "ui-static"),
-    path.join(process.cwd(), "runners", "autonomous", "dist", "ui-static"),
     path.join(process.cwd(), "dist", "ui-static"),
   ];
   for (const dir of candidates) {
@@ -201,8 +200,8 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServerH
       const autoOptions: HuntOptions = {
         target,
         objective: config.objective,
-        commanderModel: resolveModel(config.commanderModel, "haiku"),
-        operatorModel: resolveModel(config.operatorModel, "haiku"),
+        commanderModel: resolveModel(config.commanderModel, "sonnet"),
+        operatorModel: resolveModel(config.operatorModel, "sonnet"),
         scoutModel: resolveModel(config.scoutModel, "haiku"),
         maxOperators: intOr(config.maxOperators, 3),
         maxTurns: intOr(config.maxTurns, 50),

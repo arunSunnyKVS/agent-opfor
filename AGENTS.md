@@ -40,7 +40,7 @@ opfor/
 │       ├── report/                # buildReport.ts, render.ts, types.ts — HTML + JSON report renderer
 │       ├── run/                   # judge.ts (per-attack judge), scanResources.ts, types.ts — MCP-specific helpers
 │       ├── telemetry/             # Langfuse + Netra adapters (curation.ts, judgePayload.ts, providers/{langfuse,netra}/)
-│       ├── lib/                   # agent.ts (legacy dispatch helpers), env.ts, logger.ts, opforConfig.ts, generateJsonObject.ts, tracePropagation.ts
+│       ├── lib/                   # env.ts, logger.ts, opforConfig.ts, generateJsonObject.ts, tracePropagation.ts
 │       ├── llm/                   # openaiCompatible.ts — OpenAI-compatible LLM helpers
 │       ├── standards/             # atlas.ts — ATLAS standards mapping
 │       ├── prompts/               # Inlined system prompts (attacker, judge) used by core

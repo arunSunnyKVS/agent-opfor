@@ -289,24 +289,12 @@ export async function locateChatWidget(tabId, readerCfg, options = {}) {
       return [];
     }
 
-    console.log("[chatLocator] executeScript raw results:", results?.length, results);
-
     const mapped = (results || []).map((r) => ({
       frameId: r.frameId,
       frameUrl: r.result?.frameUrl || "",
       axSnapshot: r.result?.axSnapshot || "",
       error: r.error || null,
     }));
-
-    console.log(
-      "[chatLocator] mapped frames:",
-      mapped.map((m) => ({
-        frameId: m.frameId,
-        frameUrl: m.frameUrl?.slice(0, 80),
-        snapshotLen: m.axSnapshot?.length || 0,
-        error: m.error,
-      }))
-    );
 
     return mapped.filter((x) => typeof x.axSnapshot === "string" && x.axSnapshot.length > 0);
   };
@@ -319,7 +307,6 @@ export async function locateChatWidget(tabId, readerCfg, options = {}) {
     let frames = [];
     try {
       frames = await collectAxSnapshots();
-      console.log("[chatLocator] attempt", attempt, "collected frames:", frames.length);
     } catch (err) {
       console.error("[chatLocator] collectAxSnapshots threw:", err);
       frames = [];

@@ -73,7 +73,7 @@ export default tseslint.config(
     },
     rules: {
       "no-undef": "off",
-      "no-empty": "off",
+      "no-empty": "warn",
       "@typescript-eslint/no-unused-vars": "off",
     },
   }

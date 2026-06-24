@@ -4,6 +4,7 @@ import { generateText } from "ai";
 import type { LanguageModel } from "ai";
 import type { TelemetryConfig } from "../config/types.js";
 import { getAdapter } from "./adapter.js";
+import { log } from "../lib/logger.js";
 
 const MAX_TARGET_DESC = 2_000;
 const TRACE_SUMMARY_MD_FILENAME = "trace-summary.md";
@@ -169,7 +170,7 @@ async function summarizeCuratedTracesToMarkdown(opts: {
   const fullMd = `${header}${body}\n`;
   const summaryPath = path.join(outputDir, TRACE_SUMMARY_MD_FILENAME);
   await writeFile(summaryPath, fullMd, "utf8");
-  console.log(`  Wrote ${summaryPath} (markdown summary for attacks + reuse)`);
+  log.info(`  Wrote ${summaryPath} (markdown summary for attacks + reuse)`);
 
   let forAttack = fullMd;
   if (forAttack.length > summaryForAttackMaxChars) {
@@ -208,16 +209,16 @@ export async function runSetupTraceCuration(opts: {
   const fetched = await adapter.fetchTraceList(telemetry);
   if (!fetched) {
     const missing = diagnoseMissingCredentials(telemetry);
-    console.log(`\n[${telemetry.provider}] Skip trace curation: ${missing}\n`);
+    log.info(`\n[${telemetry.provider}] Skip trace curation: ${missing}\n`);
     return undefined;
   }
 
   const providerLabel = fetched.providerLabel;
-  console.log(`\n--- ${providerLabel}: trace curation (LLM) → tracedata.json ---`);
-  console.log(`  Fetched ${fetched.traces.length} trace(s) from ${providerLabel}`);
+  log.info(`\n--- ${providerLabel}: trace curation (LLM) → tracedata.json ---`);
+  log.info(`  Fetched ${fetched.traces.length} trace(s) from ${providerLabel}`);
   if (fetched.traces.length === 0) {
-    console.log(
-      `  [${providerLabel}] No traces returned — check credentials, baseUrl, time window, and filters.`
+    log.warn(
+      `[${providerLabel}] No traces returned — check credentials, baseUrl, time window, and filters.`
     );
   }
 
@@ -261,7 +262,7 @@ export async function runSetupTraceCuration(opts: {
     tracesJson,
   ].join("\n");
 
-  console.log(`  Curator: calling LLM to select relevant trace ids…`);
+  log.dim(`  Curator: calling LLM to select relevant trace ids…`);
   let llmText: string;
   try {
     const result = await generateText({ model, system, prompt: userPrompt });
@@ -278,7 +279,7 @@ export async function runSetupTraceCuration(opts: {
     await mkdir(outputDir, { recursive: true });
     const outPath = path.join(outputDir, "tracedata.json");
     await writeFile(outPath, JSON.stringify(errPayload, null, 2), "utf8");
-    console.log(`  Wrote ${outPath} (LLM error)\n`);
+    log.info(`  Wrote ${outPath} (LLM error)\n`);
     return undefined;
   }
 
@@ -300,24 +301,24 @@ export async function runSetupTraceCuration(opts: {
           : Array.isArray((detail as TraceRow).observations)
             ? ((detail as TraceRow).observations as unknown[]).length
             : 0;
-        console.log(`  Trace ${id.slice(0, 12)}...: hydrated + ${n} span(s)`);
+        log.dim(`  Trace ${id.slice(0, 12)}...: hydrated + ${n} span(s)`);
       } else {
         const row = byId.get(id);
         if (row) {
           selected.push(row);
-          console.log(`  Trace ${id.slice(0, 12)}...: hydration failed — kept list row only`);
+          log.dim(`  Trace ${id.slice(0, 12)}...: hydration failed — kept list row only`);
         }
       }
     }
   }
 
   if (parsed) {
-    console.log(
+    log.info(
       `  Curator: model returned ${relevantTraceIds.length} id(s); ${selected.length} trace(s) in output (list had ${rows.length} row(s)).`
     );
   } else {
-    console.log(
-      `  Curator: model output was not parseable JSON; traces array empty (see rawLlmText in tracedata.json).`
+    log.warn(
+      `Curator: model output was not parseable JSON; traces array empty (see rawLlmText in tracedata.json).`
     );
   }
 
@@ -346,9 +347,9 @@ export async function runSetupTraceCuration(opts: {
   await mkdir(outputDir, { recursive: true });
   const outPath = path.join(outputDir, "tracedata.json");
   await writeFile(outPath, JSON.stringify(out, null, 2), "utf8");
-  console.log(`  Wrote ${outPath} (${selected.length} trace(s) after curation)`);
+  log.info(`  Wrote ${outPath} (${selected.length} trace(s) after curation)`);
 
-  console.log(`  Summarizer: building ${TRACE_SUMMARY_MD_FILENAME} for attack prompts…`);
+  log.dim(`  Summarizer: building ${TRACE_SUMMARY_MD_FILENAME} for attack prompts…`);
   const traceSummaryForAttacks = await summarizeCuratedTracesToMarkdown({
     model,
     targetName,
@@ -361,7 +362,7 @@ export async function runSetupTraceCuration(opts: {
     summaryForAttackMaxChars: limits.summaryForAttackMaxChars,
   });
 
-  console.log(`--- ${providerLabel} curation done ---\n`);
+  log.info(`--- ${providerLabel} curation done ---\n`);
 
   return traceSummaryForAttacks;
 }
