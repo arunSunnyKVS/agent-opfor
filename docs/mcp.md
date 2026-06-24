@@ -96,13 +96,14 @@ Configures a red team run and writes `opfor.config.json`. Returns the config fil
 
 #### Agent target parameters (when `target_kind = "agent"`)
 
-| Parameter              | Type                         | Required    | Description                                       |
-| ---------------------- | ---------------------------- | ----------- | ------------------------------------------------- |
-| `agent_endpoint`       | string                       | For HTTP    | URL to attack (e.g. `http://localhost:4000/chat`) |
-| `agent_request_format` | `auto` \| `openai` \| `json` | No          | Request body format. Defaults to `auto`           |
-| `agent_target_api_key` | string                       | No          | Auth token for the target endpoint                |
-| `agent_script_path`    | string                       | For scripts | Path to a local script (.js/.py)                  |
-| `agent_description`    | string                       | No          | What the agent does (used in attack generation)   |
+| Parameter              | Type                         | Required    | Description                                                        |
+| ---------------------- | ---------------------------- | ----------- | ------------------------------------------------------------------ |
+| `agent_endpoint`       | string                       | For HTTP    | URL to attack (e.g. `http://localhost:4000/chat`)                  |
+| `agent_request_format` | `auto` \| `openai` \| `json` | No          | Request body format. Defaults to `auto`                            |
+| `agent_api_key_env`    | string                       | No          | Env var name holding the target API key (e.g. `TARGET_API_KEY`)    |
+| `agent_model`          | string                       | No          | Model name sent to the target in the `model` field (e.g. `gpt-4o`) |
+| `agent_script_path`    | string                       | For scripts | Path to a local script (.js/.py)                                   |
+| `agent_description`    | string                       | No          | What the agent does (used in attack generation)                    |
 
 #### MCP target parameters (when `target_kind = "mcp"`)
 

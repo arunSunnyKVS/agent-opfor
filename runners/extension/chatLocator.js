@@ -95,7 +95,9 @@ export async function locateChatWidget(tabId, readerCfg, options = {}) {
               }
               const sel = parts.join(" > ");
               if (sel && document.querySelector(sel)) return sel;
-            } catch {}
+            } catch {
+              /* swallowed */
+            }
 
             return el.tagName.toLowerCase();
           };
@@ -289,24 +291,12 @@ export async function locateChatWidget(tabId, readerCfg, options = {}) {
       return [];
     }
 
-    console.log("[chatLocator] executeScript raw results:", results?.length, results);
-
     const mapped = (results || []).map((r) => ({
       frameId: r.frameId,
       frameUrl: r.result?.frameUrl || "",
       axSnapshot: r.result?.axSnapshot || "",
       error: r.error || null,
     }));
-
-    console.log(
-      "[chatLocator] mapped frames:",
-      mapped.map((m) => ({
-        frameId: m.frameId,
-        frameUrl: m.frameUrl?.slice(0, 80),
-        snapshotLen: m.axSnapshot?.length || 0,
-        error: m.error,
-      }))
-    );
 
     return mapped.filter((x) => typeof x.axSnapshot === "string" && x.axSnapshot.length > 0);
   };
@@ -319,7 +309,6 @@ export async function locateChatWidget(tabId, readerCfg, options = {}) {
     let frames = [];
     try {
       frames = await collectAxSnapshots();
-      console.log("[chatLocator] attempt", attempt, "collected frames:", frames.length);
     } catch (err) {
       console.error("[chatLocator] collectAxSnapshots threw:", err);
       frames = [];
@@ -355,7 +344,9 @@ export async function locateChatWidget(tabId, readerCfg, options = {}) {
           // Give the chat iframe time to mount / update state.
           await sleep(900);
         }
-      } catch {}
+      } catch {
+        /* swallowed */
+      }
     }
 
     const combinedSnapshot = [
@@ -435,7 +426,9 @@ export async function locateChatWidget(tabId, readerCfg, options = {}) {
           await sleep(1200);
           continue;
         }
-      } catch {}
+      } catch {
+        /* swallowed */
+      }
 
       let clicked = false;
       const ordered = [
@@ -483,7 +476,9 @@ export async function locateChatWidget(tabId, readerCfg, options = {}) {
       collected.find((f) => f.frameId === chosen.frameId)?.snapshot ||
       collected[0]?.snapshot ||
       "";
-  } catch {}
+  } catch {
+    /* swallowed */
+  }
 
   return {
     ok: true,

@@ -7,6 +7,7 @@ loadDotenv();
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { writeFile, mkdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -18,7 +19,13 @@ import { PROVIDERS, type ProviderName } from "@agent-opfor/core/config/types.js"
 import type { RunConfig } from "@agent-opfor/core/execute/types.js";
 import { normalizeEffort } from "@agent-opfor/core/execute/effortCompat.js";
 
-const server = new McpServer({ name: "opfor", version: "0.1.0" });
+function readVersion(): string {
+  const pkgUrl = new URL("../package.json", import.meta.url);
+  const pkg = JSON.parse(readFileSync(pkgUrl, "utf8")) as { version?: string };
+  return pkg.version ?? "0.0.0";
+}
+
+const server = new McpServer({ name: "opfor", version: readVersion() });
 
 // ---------------------------------------------------------------------------
 // Tool: opfor_list_evaluators
@@ -138,7 +145,10 @@ server.tool(
       .enum(["auto", "openai", "json"])
       .optional()
       .describe("Request body format (agent targets)"),
-    agent_target_api_key: z.string().optional().describe("API key for the target endpoint"),
+    agent_api_key_env: z
+      .string()
+      .optional()
+      .describe("Env var name holding the target API key (e.g. TARGET_API_KEY)"),
     agent_script_path: z
       .string()
       .optional()
@@ -147,7 +157,7 @@ server.tool(
       .string()
       .optional()
       .describe("What the agent does (used in attack generation)"),
-    agent_target_model: z
+    agent_model: z
       .string()
       .optional()
       .describe(

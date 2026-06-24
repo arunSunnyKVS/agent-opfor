@@ -9,15 +9,15 @@ import type { RunContext } from "../orchestrator/context.js";
 import type { SelfCheckResult, Verdict } from "../report/types.js";
 import { jsonResult, textResult } from "./util.js";
 
-/** Resolve a model alias to a full Anthropic API model id. */
+/** Resolve a model alias to a full Anthropic API model id, respecting gateway env-var overrides. */
 function resolveModelId(model: string): string {
   switch (model) {
     case "opus":
-      return "claude-opus-4-8";
+      return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL ?? "claude-opus-4-8";
     case "sonnet":
-      return "claude-sonnet-4-6";
+      return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL ?? "claude-sonnet-4-6";
     case "haiku":
-      return "claude-haiku-4-5-20251001";
+      return process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? "claude-haiku-4-5-20251001";
     default:
       return model; // assume a full id was provided
   }
