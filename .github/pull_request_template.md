@@ -1,15 +1,12 @@
-## What changed and why
+## Problem
+
+Briefly describe the issue or feature being addressed.
+
+## Solution
+
+Explain your approach and any important design decisions.
 
 <!-- Required: explain what this PR does and the motivation behind it. -->
-
-## Type of change
-
-- [ ] `feat` — new evaluator, suite, transport, or feature
-- [ ] `fix` — bug fix
-- [ ] `docs` — documentation only
-- [ ] `refactor` — no behavior change
-- [ ] `chore` — deps, tooling, CI
-- [ ] `test` — adding or updating tests
 
 ## Checklist
 
