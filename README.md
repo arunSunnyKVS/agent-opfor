@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/opfor-logo.png" alt="OPFOR" width="120" />
+  <img src="assets/agent-opfor-logo.png" alt="OPFOR" width="250" />
 </p>
 
 <p align="center">
