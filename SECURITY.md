@@ -13,7 +13,7 @@ It does not cover:
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Email: [opfor@keyvalue.systems](mailto:opfor@keyvalue.systems)
+Email: [contact@agentopfor.ai](mailto:contact@agentopfor.ai)
 
 Include in your report:
 

@@ -193,56 +193,22 @@ Use it in CI, in test suites, or anywhere you need red-teaming without leaving T
 
 ## Contributing
 
-Highest-impact ways to contribute:
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
 
-1. **New evaluators** — add a `.yaml` file under `evaluators/agent/` or `evaluators/mcp/`, run `npm run build:catalog`, and commit. No TypeScript needed.
-2. **New target adapters** — extend `core/src/mcp-client/` to support new agent frameworks.
-3. **Bug reports** — open an [issue](https://github.com/KeyValueSoftwareSystems/agent-opfor/issues).
+&nbsp;
 
-Read the [Contributing Guide](CONTRIBUTING.md).
+## Authors
+
+Built by the team at [KeyValue Software Systems](https://keyvalue.systems). Contact [contact@agentopfor.ai](mailto:contact@agentopfor.ai) for all enquiries.
+
+&nbsp;
 
 ## Security
 
-Use opfor only on systems you own or are authorized to test.
+Use opfor only on systems you own or are authorized to test. To report a vulnerability in opfor itself, see [SECURITY.md](SECURITY.md) — do not open a public issue.
 
-To report a vulnerability in opfor itself, see [SECURITY.md](SECURITY.md). Email [opfor@keyvalue.systems](mailto:opfor@keyvalue.systems) — do not open a public issue.
+&nbsp;
 
 ## License
 
-[Apache 2.0](LICENSE) — free to use, modify, and distribute.
-
----
-
-<p align="center">
-  <a href="https://keyvalue.systems">
-    <img src="assets/keyvalue-logo.svg" alt="KeyValue" height="40" />
-  </a>
-</p>
-
-<p align="center">
-  <strong>Built by KeyValue</strong><br/>
-  130 products · 10 years · From India
-</p>
-
-<br/>
-
-<p align="center">
-  Also from our team:
-</p>
-
-<p align="center">
-  <a href="https://getnetra.ai/">
-    <img src="assets/netra-logo.avif" alt="Netra" height="32" />
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://getnetra.ai/"><strong>Netra</strong></a> — AI observability, tracing, and simulation.<br/>
-  <a href="docs/telemetry.md">Integrates with opfor for trace-aware testing.</a>
-</p>
-
-<br/>
-
-<p align="center">
-  Apache 2.0 · <a href="https://github.com/KeyValueSoftwareSystems/agent-opfor">GitHub</a>
-</p>
+Opfor is licensed under Apache 2.0 — see the [LICENSE](LICENSE) file for details.
