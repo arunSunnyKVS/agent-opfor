@@ -2,6 +2,7 @@
 // Do NOT merge with evaluators/judge.ts (agent) — different evidence rules and prompt domain.
 // Used by the CLI MCP flow and the MCP server runner.
 
+import { z } from "zod";
 import type { LlmConfig } from "../config/schema.js";
 import type { JudgeResult } from "./types.js";
 import type { McpToolTurn as ToolCallTurn } from "../generate/generateNextTurn.js";
@@ -56,6 +57,13 @@ The TOOL RESPONSE IS the tool description text. FAIL only if it contains explici
 
 const DESCRIPTION_SCAN_ARGS_PREFIX = "_opfor_scan";
 
+// The slice of an MCP tool-description payload we render: the first content
+// block's text. Validated (not cast) per the repo's "Zod for all external
+// input" rule — anything that doesn't match falls back to the raw response.
+const McpDescriptionResponseSchema = z.object({
+  content: z.array(z.object({ text: z.string().optional() })).optional(),
+});
+
 /**
  * Cap tool responses to stay well within LLM context windows.
  * Keeps the first and last portions so both early leakage and
@@ -83,8 +91,7 @@ export interface EvaluatorCriteria {
   judgeInstructions?: string;
 }
 
-export async function judgeToolResponse(args: {
-  model: LlmConfig;
+export interface McpJudgePromptInput {
   evaluator: EvaluatorCriteria;
   attackSummary: string;
   toolName: string;
@@ -93,7 +100,15 @@ export async function judgeToolResponse(args: {
   toolError?: string;
   judgeHint?: string;
   priorTurns?: ToolCallTurn[];
-}): Promise<JudgeResult> {
+}
+
+/**
+ * Assemble the MCP judge user prompt: evaluator criteria, optional attack-specific
+ * and evaluator-specific instructions, prior turns, the attack/scan target, and the
+ * tool response/error/description block. Pure string assembly with no LLM call, so
+ * it can be unit-tested apart from the judge round-trip.
+ */
+export function buildMcpJudgePrompt(args: McpJudgePromptInput): string {
   const isDescriptionScan =
     args.evaluator.id === "tool-description-scan" ||
     args.toolArguments[DESCRIPTION_SCAN_ARGS_PREFIX] === "tool_description";
@@ -107,12 +122,16 @@ export async function judgeToolResponse(args: {
 
   if (isDescriptionScan) {
     const descriptionText = (() => {
+      let parsed: unknown;
       try {
-        const parsed = JSON.parse(args.toolResponse) as { content?: Array<{ text?: string }> };
-        return parsed.content?.[0]?.text ?? args.toolResponse;
+        parsed = JSON.parse(args.toolResponse);
       } catch {
         return args.toolResponse;
       }
+      const result = McpDescriptionResponseSchema.safeParse(parsed);
+      return result.success
+        ? (result.data.content?.[0]?.text ?? args.toolResponse)
+        : args.toolResponse;
     })();
     responseBlock = `TOOL DESCRIPTION (static analysis — not a live response):\n${descriptionText}`;
   } else if (args.toolError) {
@@ -121,7 +140,7 @@ export async function judgeToolResponse(args: {
     responseBlock = `TOOL RESPONSE:\n${truncateResponse(args.toolResponse || "(empty)")}`;
   }
 
-  const user = [
+  return [
     `EVALUATOR: ${args.evaluator.name} (${args.evaluator.id})`,
     `SEVERITY: ${args.evaluator.severity}`,
     ``,
@@ -161,11 +180,15 @@ export async function judgeToolResponse(args: {
     ``,
     `Your assessment:`,
   ].join("\n");
+}
 
+export async function judgeToolResponse(
+  args: McpJudgePromptInput & { model: LlmConfig }
+): Promise<JudgeResult> {
   const raw = await chatCompletionJsonContent({
     model: args.model,
     system: JUDGE_SYSTEM,
-    user,
+    user: buildMcpJudgePrompt(args),
   });
 
   return verdictParser.parseJson(raw);
