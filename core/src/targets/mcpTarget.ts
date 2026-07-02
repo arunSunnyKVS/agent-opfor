@@ -12,6 +12,7 @@ export interface McpTarget {
   callTool(name: string, args: Record<string, unknown>): Promise<McpToolCallResult>;
   listTools(): Promise<ToolInfo[]>;
   listResources(): Promise<ResourceInfo[]>;
+  /** Resolve with the resource's text content; reject (throw) on a read failure. */
   readResource(uri: string): Promise<string>;
   close(): Promise<void>;
 }
@@ -110,7 +111,12 @@ class ConnectedMcpTarget implements McpTarget {
       return parts.join("\n").trim();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `ERROR: ${msg.slice(0, 300)}`;
+      // Throw rather than return an "ERROR: …" string (that in-band sentinel
+      // collides with legit content starting "ERROR: "). Callers try/catch.
+      throw new Error(
+        `Failed to read MCP resource "${uri.slice(0, 200)}": ${msg.slice(0, 300)}. Verify the resource URI is valid and the MCP server can serve it.`,
+        { cause: err }
+      );
     }
   }
 
