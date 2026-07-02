@@ -6,15 +6,12 @@ import type { LanguageModel } from "ai";
 import type {
   RunConfig,
   AttackSpec,
-  McpAttackSpec,
   AttackResult,
   EvaluatorResult,
   UnifiedRunReport,
-  McpTurnRecord,
   SessionContext,
 } from "./types.js";
 import { generateAttacks, type ToolInfo } from "../generate/generateAttacks.js";
-import { generateNextMcpTurn } from "../generate/generateNextTurn.js";
 import { createAgentTarget, TargetStopError } from "../targets/agentTarget.js";
 import type { AgentTarget } from "../targets/agentTarget.js";
 import { createMcpTarget } from "../targets/mcpTarget.js";
@@ -24,13 +21,14 @@ import type { EvaluatorSpec } from "../evaluators/parseEvaluator.js";
 import { loadSkillCatalog, resolveSuiteEvaluatorIds } from "../config/loadSkillCatalog.js";
 import { loadCatalog } from "../catalog/loadCatalog.js";
 import { runAgentAttack } from "./runAgentLoop.js";
+import { runMcpAttack } from "./mcpAttackDriver.js";
 import {
   summarizeVerdicts,
   toEvaluatorResult,
   buildUnifiedReport,
   modelLabel,
 } from "./aggregate.js";
-import { judgeToolResponse, sanitizeJudgeResult } from "../run/judge.js";
+import { judgeToolResponse } from "../run/judge.js";
 import { errorJudge as mcpErrorJudge } from "../lib/judgeTypes.js";
 // scanResources is available for direct client usage; scan-mode evaluators
 // use target.listResources()/readResource() through the McpTarget interface.
@@ -68,7 +66,11 @@ export async function runAll(
   const notify = options?.onProgress ?? (() => {});
 
   const attackModel = resolveModel(config.attackerLlm);
-  const judgeModel = resolveModel(config.judgeLlm ?? config.attackerLlm);
+  // Single source of truth for the judge LLM: explicit judge model, else the
+  // attacker model. Reused by the baseline scans and the MCP dispatch below so
+  // the fallback can't drift between paths.
+  const judgeLlmConfig = config.judgeLlm ?? config.attackerLlm;
+  const judgeModel = resolveModel(judgeLlmConfig);
 
   const isMcp = config.target.kind === "mcp";
   const evaluators = await resolveEvaluators(
@@ -99,7 +101,7 @@ export async function runAll(
   try {
     // ── MCP pre-flight scans (always run for MCP targets) ──────────────
     if (isMcp && mcpTarget) {
-      const judgeModelConfig = config.judgeLlm ?? config.attackerLlm;
+      const judgeModelConfig = judgeLlmConfig;
       log.info(`\n── MCP baseline scans ──`);
 
       const resourceResults = await scanResources({ target: mcpTarget, judgeModelConfig, notify });
@@ -210,7 +212,7 @@ export async function runAll(
         try {
           result =
             attack.kind === "mcp"
-              ? await runMcpAttack(attack, mcpTarget!, judgeModel, config)
+              ? await runMcpAttack(attack, mcpTarget!, attackModel, judgeLlmConfig)
               : await runAgentAttack(
                   attack,
                   attackModel,
@@ -333,145 +335,6 @@ export async function runAll(
     (report as UnifiedRunReport & { stopReason?: string }).stopReason = stopReason;
   }
   return report;
-}
-
-// ---------------------------------------------------------------------------
-// MCP attack runner
-// ---------------------------------------------------------------------------
-
-async function runMcpAttack(
-  attack: McpAttackSpec,
-  target: Awaited<ReturnType<typeof createMcpTarget>>,
-  judgeModel: LanguageModel,
-  config: RunConfig
-): Promise<AttackResult> {
-  const attackModel = resolveModel(config.attackerLlm);
-  const toolName = attack.toolName ?? "";
-  const turns: McpTurnRecord[] = [];
-  const mcpHistory: import("../generate/generateNextTurn.js").McpToolTurn[] = [];
-
-  if (!toolName) {
-    return {
-      kind: "mcp",
-      attackId: attack.id,
-      evaluatorId: attack.evaluatorId,
-      patternName: attack.patternName,
-      toolName: "",
-      toolArguments: {},
-      toolResponse: "",
-      toolError: "no toolName in attack spec",
-      judge: mcpErrorJudge("no toolName in attack spec"),
-    };
-  }
-
-  let judgeHint = attack.judgeHint;
-  let earlyStopJudge: import("../run/types.js").JudgeResult | null = null;
-
-  for (let t = 1; t <= attack.turns; t++) {
-    let toolArguments: Record<string, unknown>;
-
-    if (t === 1) {
-      toolArguments = attack.toolArguments ?? {};
-    } else {
-      const next = await generateNextMcpTurn(
-        mcpHistory,
-        `${attack.patternName} — ${attack.evaluatorName}`,
-        toolName,
-        attack.toolArguments ?? {},
-        attackModel
-      );
-      toolArguments = next.args;
-      if (next.judgeHint) judgeHint = next.judgeHint;
-    }
-
-    const { response, toolError } = await target.callTool(toolName, toolArguments);
-
-    mcpHistory.push({ toolName, toolArguments, response, toolError });
-    turns.push({ kind: "mcp", turnIndex: t, toolName, toolArguments, response, toolError });
-
-    // Multi-turn: run a per-turn judge check and early-stop on FAIL
-    if (attack.turns > 1 && t < attack.turns) {
-      const midJudge = await judgeToolResponse({
-        model: config.judgeLlm ?? config.attackerLlm,
-        evaluator: {
-          id: attack.evaluatorId,
-          name: attack.evaluatorName,
-          standards: attack.standards,
-          severity: attack.severity,
-          passCriteria: attack.passCriteria,
-          failCriteria: attack.failCriteria,
-        },
-        attackSummary: attack.patternName,
-        toolName,
-        toolArguments,
-        toolResponse: response,
-        toolError,
-        judgeHint,
-        priorTurns: mcpHistory.length > 1 ? mcpHistory.slice(0, -1) : undefined,
-      }).then((r) =>
-        sanitizeJudgeResult(r, {
-          attackSummary: attack.patternName,
-          toolArguments,
-          toolResponse: response,
-          toolError,
-        })
-      );
-
-      if (midJudge.verdict === "FAIL") {
-        log.info(`     ⚡ Early stop at turn ${t}/${attack.turns} — vulnerability found`);
-        earlyStopJudge = midJudge;
-        break;
-      }
-    }
-  }
-
-  const lastTurn = turns[turns.length - 1];
-
-  let finalJudge: import("../run/types.js").JudgeResult;
-  if (earlyStopJudge) {
-    finalJudge = earlyStopJudge;
-  } else if (!lastTurn) {
-    finalJudge = mcpErrorJudge("no turns completed");
-  } else {
-    finalJudge = await judgeToolResponse({
-      model: config.judgeLlm ?? config.attackerLlm,
-      evaluator: {
-        id: attack.evaluatorId,
-        name: attack.evaluatorName,
-        standards: attack.standards,
-        severity: attack.severity,
-        passCriteria: attack.passCriteria,
-        failCriteria: attack.failCriteria,
-      },
-      attackSummary: attack.patternName,
-      toolName: lastTurn.toolName,
-      toolArguments: lastTurn.toolArguments,
-      toolResponse: lastTurn.response,
-      toolError: lastTurn.toolError,
-      judgeHint,
-      priorTurns: mcpHistory.length > 1 ? mcpHistory.slice(0, -1) : undefined,
-    }).then((r) =>
-      sanitizeJudgeResult(r, {
-        attackSummary: attack.patternName,
-        toolArguments: lastTurn.toolArguments,
-        toolResponse: lastTurn.response,
-        toolError: lastTurn.toolError,
-      })
-    );
-  }
-
-  return {
-    kind: "mcp",
-    attackId: attack.id,
-    evaluatorId: attack.evaluatorId,
-    patternName: attack.patternName,
-    toolName,
-    toolArguments: lastTurn?.toolArguments ?? attack.toolArguments,
-    toolResponse: lastTurn?.response,
-    toolError: lastTurn?.toolError,
-    judge: finalJudge,
-    turns: turns.length > 1 ? turns : undefined,
-  };
 }
 
 // ---------------------------------------------------------------------------
