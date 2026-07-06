@@ -4,7 +4,7 @@ import {
   captureSessionFromResponse,
   resolveSessionPlan,
 } from "./httpClient.js";
-import { getEnv } from "../lib/env.js";
+import { expandEnvInHeaders, getEnv } from "../lib/env.js";
 import { invokeLocalTargetScript } from "../lib/localScriptTarget.js";
 import {
   buildPropagatedHeaders,
@@ -122,7 +122,7 @@ async function callHttp(
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (resolvedApiKey) headers["Authorization"] = `Bearer ${resolvedApiKey}`;
-  if (config.headers) Object.assign(headers, config.headers);
+  if (config.headers) Object.assign(headers, expandEnvInHeaders(config.headers));
 
   const prop = options?.propagation;
   const hasPropagation =
