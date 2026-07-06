@@ -9,6 +9,7 @@ import { errorJudge } from "../lib/judgeTypes.js";
 import type { JudgeObservabilityContext } from "../evaluators/judge.js";
 import { isTargetError } from "../targets/agentTarget.js";
 import type { AgentTarget } from "../targets/agentTarget.js";
+import { resolveSessionPlan, type SessionPlan } from "../targets/httpClient.js";
 import { newOtelTraceId } from "../lib/tracePropagation.js";
 import { randomUUID } from "../lib/random.js";
 import { getAdapter } from "../telemetry/adapter.js";
@@ -24,6 +25,13 @@ export interface AgentAttackContext {
   telemetry?: TelemetryConfig;
   /** Prior conversation turns to seed the history (used for resume). */
   initialHistory?: { role: "user" | "assistant"; content: string }[];
+  /**
+   * A previously-captured server-owned session id to resume with (used for
+   * resume). Without it, a resumed server-owned attack has no way to recover
+   * the target's session and falls back to today's turn-1 behavior (send no
+   * id, capture whatever the target returns).
+   */
+  initialSessionId?: string;
 }
 
 /**
@@ -45,9 +53,14 @@ export class AgentAttackDriver implements AttackDriver<string, string> {
   private finalResponse = "";
   private readonly propagation: TelemetryConfig["propagation"];
   private readonly attackTraceId: string | undefined;
-  // One sessionId per attack — every turn reuses it so a stateful agent under
-  // test can thread its own chat history across turns.
+  // Client-minted sessionId: sent every turn in client mode, a fallback in server mode.
   private readonly attackSessionId = randomUUID();
+  private readonly sessionPlan: SessionPlan;
+  // Session id returned by a server-owned target, echoed on later turns.
+  // Seeded from context.initialSessionId on resume; see AgentAttackContext.
+  private capturedSessionId: string | undefined;
+  private sendCount = 0;
+  private warnedCaptureMiss = false;
 
   constructor(
     private readonly attack: AgentAttackSpec,
@@ -78,6 +91,10 @@ export class AgentAttackDriver implements AttackDriver<string, string> {
         });
       }
     }
+
+    const targetConfig = context?.targetConfig;
+    this.sessionPlan = resolveSessionPlan(targetConfig?.kind === "agent" ? targetConfig : {});
+    this.capturedSessionId = context?.initialSessionId;
 
     this.propagation = context?.telemetry?.propagation;
     const hasPropagation =
@@ -130,13 +147,35 @@ export class AgentAttackDriver implements AttackDriver<string, string> {
   }
 
   async execute(prompt: string): Promise<string> {
-    return this.target.send(prompt, {
-      sessionId: this.attackSessionId,
+    // Server mode: send no id on turn 1 so the target mints its own, then echo it.
+    // Otherwise send the minted id (the target writes it only if configured).
+    const isFirstSend = this.sendCount === 0;
+    this.sendCount++;
+    const sessionId =
+      this.capturedSessionId ??
+      (this.sessionPlan.mode === "server" && isFirstSend ? undefined : this.attackSessionId);
+
+    const response = await this.target.send(prompt, {
+      sessionId,
+      captureSession: (id) => {
+        this.capturedSessionId = id;
+      },
       history: this.history.messages,
       propagation: this.propagation,
       attackTraceId: this.attackTraceId,
       attackIndex: Number.isFinite(Number(this.attackIndex)) ? Number(this.attackIndex) : undefined,
     });
+
+    if (this.sessionPlan.mode === "server" && !this.capturedSessionId && !this.warnedCaptureMiss) {
+      this.warnedCaptureMiss = true;
+      log.dim(
+        `[session] server-owned target never returned a session id (session.receive: ${this.sessionPlan.receive?.in}` +
+          `${this.sessionPlan.receive?.name ? ` "${this.sessionPlan.receive.name}"` : ""}). ` +
+          `Check that the target actually returns one at that location, and that its response format ` +
+          `matches responsePath — falling back to a client-minted id for later turns.`
+      );
+    }
+    return response;
   }
 
   record(turnNo: number, prompt: string, response: string): void {

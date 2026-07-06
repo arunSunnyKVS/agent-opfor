@@ -106,6 +106,9 @@ function buildCoreOptions(options: HuntOptions): CoreHuntOptions {
     mode,
     promptPath: options.target.promptPath,
     responsePath: options.target.responsePath,
+    // resolveSessionPlan (core) already folds sessionField into session.send when
+    // session is absent — pass both through and let core own that precedence.
+    session: options.target.session,
     sessionField: options.target.sessionField,
     model: options.target.model,
   };

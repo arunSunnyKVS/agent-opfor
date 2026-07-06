@@ -96,6 +96,9 @@ function buildTargetConfig(target: TargetConfig): AgentTargetConfig | McpTargetC
     promptPath: httpTarget.promptPath,
     responsePath: httpTarget.responsePath,
     stateful: httpTarget.stateful,
+    // resolveSessionPlan (core) already folds sessionIdField into session.send when
+    // session is absent — pass both through and let core own that precedence.
+    session: httpTarget.session,
     sessionIdField: httpTarget.sessionField,
   };
 }
