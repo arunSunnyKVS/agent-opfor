@@ -22,12 +22,11 @@ test("a tool-calling, multi-tenant, money-moving agent scores high power", () =>
     businessUseCase:
       "Internal customer support bot for an e-commerce platform. Handles order lookups, refunds, " +
       "and ticket creation. Has access to PostgreSQL with multi-tenant user data across " +
-      "free/premium/admin tiers.",
-    target: agentTarget({ stateful: true }),
+      "free/premium/admin tiers. Uses persistent memory to track prior conversations.",
   });
 
   // autonomy 1.0 (refunds) + tools 1.0 (postgres/user data) + identity 1.0 (multi-tenant/tiers/admin)
-  // + persistence 0.5 (stateful) = 3.5 / 4 = 0.875
+  // + persistence 0.5 (persistent memory) = 3.5 / 4 = 0.875
   assert.equal(profile.factors.autonomy, 1.0);
   assert.equal(profile.factors.tools, 1.0);
   assert.equal(profile.factors.identity, 1.0);
@@ -36,10 +35,10 @@ test("a tool-calling, multi-tenant, money-moving agent scores high power", () =>
   assert.match(profile.rationale, /tenant|role/);
 });
 
-test("a read-only stateless bot scores low, baseline power", () => {
+test("a read-only bot scores low, baseline power", () => {
   const profile = deriveAgentProfile({
     businessUseCase: "A read-only FAQ chatbot that answers product questions.",
-    target: agentTarget({ stateful: false }),
+    target: agentTarget(),
   });
 
   assert.equal(profile.factors.autonomy, 0.5);
@@ -57,12 +56,34 @@ test("empty input still returns a valid baseline profile", () => {
   assert.equal(typeof profile.rationale, "string");
 });
 
-test("a stateful target lifts persistence even without memory keywords", () => {
+test("target.description alone can fire keyword signals (no businessUseCase)", () => {
+  const profile = deriveAgentProfile({
+    target: agentTarget({
+      description: "Agent that processes refunds and accesses PostgreSQL user records.",
+    }),
+  });
+  assert.equal(profile.factors.autonomy, 1.0);
+  assert.equal(profile.factors.tools, 1.0);
+});
+
+test("target.description and businessUseCase are combined for signal detection", () => {
+  const profile = deriveAgentProfile({
+    businessUseCase: "Handles refunds.",
+    target: agentTarget({
+      description: "Multi-tenant customer support agent with persistent memory.",
+    }),
+  });
+  assert.equal(profile.factors.autonomy, 1.0);
+  assert.equal(profile.factors.identity, 1.0);
+  assert.equal(profile.factors.persistence, 0.5);
+});
+
+test("stateful flag on target does NOT affect persistence — only text signals do", () => {
   const profile = deriveAgentProfile({
     businessUseCase: "Bot that answers questions.",
     target: agentTarget({ stateful: true }),
   });
-  assert.equal(profile.factors.persistence, 0.5);
+  assert.equal(profile.factors.persistence, 0);
 });
 
 test("memory keywords in the use case lift persistence with no target metadata", () => {
@@ -72,10 +93,18 @@ test("memory keywords in the use case lift persistence with no target metadata",
   assert.equal(profile.factors.persistence, 0.5);
 });
 
+test("knowledge base / RAG / vector store signals lift persistence", () => {
+  const profile = deriveAgentProfile({
+    target: agentTarget({
+      description: "Agent backed by a vector store for document retrieval.",
+    }),
+  });
+  assert.equal(profile.factors.persistence, 0.5);
+});
+
 test("power stays within [0,1] across factor combinations", () => {
   const profile = deriveAgentProfile({
     businessUseCase: "Deletes records, transfers funds, admin across tenants, persistent memory.",
-    target: agentTarget({ stateful: true }),
   });
   assert.ok(profile.power >= 0 && profile.power <= 1);
 });

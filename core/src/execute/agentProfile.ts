@@ -1,7 +1,6 @@
 // Derives a target's agentic "power profile" from context OPFOR already has —
-// no new setup questions. The `businessUseCase` free-text (already collected and
-// used to ground attack generation) plus structured target metadata carry the
-// signals that matter for risk amplification.
+// no new setup questions. Both `target.description` (required for agent targets)
+// and `businessUseCase` (optional enrichment) are scanned for keyword signals.
 //
 // This is a deterministic heuristic (no LLM call) so a headline-adjacent number
 // stays reproducible and free. An LLM-based classifier over the same inputs is a
@@ -28,8 +27,19 @@ const DATA_WORDS =
 // Crossing identity / tenant / role boundaries.
 const IDENTITY_WORDS =
   /\b(multi-?tenant|tenant|tier|role|admin|rbac|permission|account|impersonat)/i;
-// Long-lived memory / persistence.
-const MEMORY_WORDS = /\b(memory|remember|history|long-?term|persistent|persist|session)/i;
+// Long-lived memory / persistence — only true memory signals, NOT the transport
+// `stateful` flag (which is a session-threading mechanism, not agent memory).
+const MEMORY_WORDS =
+  /\b(memory|remember|long-?term|persistent|persist|knowledge base|rag|vector store)/i;
+
+/**
+ * Build the text corpus to scan for keyword signals. Uses `target.description`
+ * (required on agent targets) as the primary source, with `businessUseCase`
+ * (optional) as enrichment. Both are concatenated so either can fire keywords.
+ */
+function buildProfileText(input: ProfileInput): string {
+  return [input.businessUseCase, input.target?.description].filter(Boolean).join(" ").toLowerCase();
+}
 
 /**
  * Infer an {@link AgentProfile} from the run's business context + target metadata.
@@ -37,8 +47,7 @@ const MEMORY_WORDS = /\b(memory|remember|history|long-?term|persistent|persist|s
  * Always returns a profile (defaults to a low-power baseline when nothing fires).
  */
 export function deriveAgentProfile(input: ProfileInput): AgentProfile {
-  const text = (input.businessUseCase ?? "").toLowerCase();
-  const target = input.target;
+  const text = buildProfileText(input);
   const reasons: string[] = [];
   const factors: Record<string, number> = {};
 
@@ -67,10 +76,11 @@ export function deriveAgentProfile(input: ProfileInput): AgentProfile {
   }
   factors.identity = identity;
 
-  // Persistence — session/long-term memory that survives across turns.
+  // Persistence — true long-term memory / RAG / knowledge base, NOT the
+  // transport-level `stateful` flag (which only controls whether OPFOR sends
+  // full chat history vs single prompts with session IDs).
   let persistence = 0;
-  if (target && "stateful" in target && target.stateful) persistence = 0.5;
-  if (MEMORY_WORDS.test(text)) persistence = Math.max(persistence, 0.5);
+  if (MEMORY_WORDS.test(text)) persistence = 0.5;
   if (persistence > 0) reasons.push("retains state/memory across the conversation");
   factors.persistence = persistence;
 
